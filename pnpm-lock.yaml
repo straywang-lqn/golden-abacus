@@ -20,6 +20,9 @@ importers:
       '@capacitor/share':
         specifier: ^8.0.1
         version: 8.0.1(@capacitor/core@8.5.1)
+      vant:
+        specifier: ^4.10.2
+        version: 4.10.2(vue@3.5.42(typescript@5.9.3))
       vue:
         specifier: ^3.5.0
         version: 3.5.42(typescript@5.9.3)
@@ -440,6 +443,14 @@ packages:
   '@types/slice-ansi@4.0.0':
     resolution: {integrity: sha512-+OpjSaq85gvlZAYINyzKpLeiFkSC4EsC6IIiT6v6TLSU5k5U83fHGj9Lel8oKEXM0HqgrMVCjXPDPVICtxF7EQ==}
 
+  '@vant/popperjs@1.3.0':
+    resolution: {integrity: sha512-hB+czUG+aHtjhaEmCJDuXOep0YTZjdlRR+4MSmIFnkCQIxJaXLQdSsR90XWvAI2yvKUI7TCGqR8pQg2RtvkMHw==}
+
+  '@vant/use@1.6.0':
+    resolution: {integrity: sha512-PHHxeAASgiOpSmMjceweIrv2AxDZIkWXyaczksMoWvKV2YAYEhoizRuk/xFnKF+emUIi46TsQ+rvlm/t2BBCfA==}
+    peerDependencies:
+      vue: ^3.0.0
+
   '@vitejs/plugin-vue@6.0.8':
     resolution: {integrity: sha512-0ZjgOg7oO6farnNGup7yvoM/YXZV84OZxHAwtflItNa/6zzQyVb5LNxyea3FEKEX2XlagIKzrlH7wwxkKgtiew==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -852,6 +863,11 @@ packages:
     deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
+  vant@4.10.2:
+    resolution: {integrity: sha512-7lm1KtFub11ozleFqQ6rL8oa3Z8i33G3IUEuJGWBXlQwPTRfu8BYWGGZ/GhA5QdWhERp5mtBq6TjpYEmLcwwow==}
+    peerDependencies:
+      vue: ^3.0.0
+
   vite@7.3.6:
     resolution: {integrity: sha512-4XP60spRGjSZFf1qYH+dJIkK2znL3zQfl9KkOV9MkkRR/3Dls0dxaBsQPTloEc5BLXWPL9vsOxopxyKoMmDueg==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -1249,6 +1265,12 @@ snapshots:
       undici-types: 8.3.0
 
   '@types/slice-ansi@4.0.0': {}
+
+  '@vant/popperjs@1.3.0': {}
+
+  '@vant/use@1.6.0(vue@3.5.42(typescript@5.9.3))':
+    dependencies:
+      vue: 3.5.42(typescript@5.9.3)
 
   '@vitejs/plugin-vue@6.0.8(vite@7.3.6(@types/node@26.4.1))(vue@3.5.42(typescript@5.9.3))':
     dependencies:
@@ -1694,6 +1716,13 @@ snapshots:
   util-deprecate@1.0.2: {}
 
   uuid@7.0.3: {}
+
+  vant@4.10.2(vue@3.5.42(typescript@5.9.3)):
+    dependencies:
+      '@vant/popperjs': 1.3.0
+      '@vant/use': 1.6.0(vue@3.5.42(typescript@5.9.3))
+      '@vue/shared': 3.5.42
+      vue: 3.5.42(typescript@5.9.3)
 
   vite@7.3.6(@types/node@26.4.1):
     dependencies:

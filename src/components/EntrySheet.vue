@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import DatePickerSheet from './DatePickerSheet.vue'
 import {
   dateInputToTimestamp,
   formatDateInput,
+  parseDateInput,
   toCents,
   type Category,
   type EntryDraft,
@@ -31,6 +33,8 @@ const amount = ref(props.editing ? (props.editing.amountCents / 100).toFixed(2) 
 const categoryId = ref(props.editing?.categoryId ?? '')
 const note = ref(props.editing?.note ?? '')
 const date = ref(formatDateInput(props.editing?.occurredAt ?? Date.now()))
+// 日期草稿只在共享弹层确认后更新，取消不会改变表单中的已有日期。
+const datePickerOpen = ref(false)
 
 // error 是本地校验错误，saveError 是父组件返回的持久化错误。
 const error = ref('')
@@ -64,6 +68,11 @@ function submit() {
     error.value = '请选择分类'
     return
   }
+  // 自定义日期按钮替代原生 required 输入后，在提交边界显式校验日历日期。
+  if (!parseDateInput(date.value)) {
+    error.value = '请选择有效日期'
+    return
+  }
   // 只提交领域层需要的普通草稿，记录 id 和审计时间由父组件统一生成。
   emit('save', {
     type: type.value,
@@ -84,7 +93,7 @@ function submit() {
         <span></span>
       </header>
 
-      <!-- 使用原生 form、日期输入和 submit 行为，键盘操作与按钮点击走同一校验。 -->
+      <!-- 表单提交保留原生键盘行为，日期选择与月份入口共用同一组件。 -->
       <form class="entry-form" @submit.prevent="submit">
         <div class="segmented-control" aria-label="记录类型">
           <button type="button" :class="{ active: type === 'expense' }" :aria-pressed="type === 'expense'" @click="type = 'expense'">支出</button>
@@ -122,10 +131,13 @@ function submit() {
           <span>备注 <small>可选</small></span>
           <input v-model="note" maxlength="40" placeholder="例如：午餐">
         </label>
-        <label class="form-row">
+        <div class="form-row">
           <span>日期</span>
-          <input v-model="date" type="date" required>
-        </label>
+          <button type="button" class="date-field-button" :aria-label="`选择记账日期，当前${date}`" aria-haspopup="dialog" :aria-expanded="datePickerOpen" @click="datePickerOpen = true">
+            <span>{{ date.replaceAll('-', ' / ') }}</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 2v4m8-4v4M4 10h16M5 4h14a1 1 0 0 1 1 1v15H4V5a1 1 0 0 1 1-1Z" /></svg>
+          </button>
+        </div>
 
         <p v-if="error || saveError" class="form-error" role="alert">{{ error || saveError }}</p>
 
@@ -143,6 +155,7 @@ function submit() {
           {{ saving ? '正在保存…' : '保存这笔记录' }}
         </button>
       </form>
+      <DatePickerSheet v-model:show="datePickerOpen" :value="date" mode="date" @confirm="date = $event" />
     </section>
   </div>
 </template>

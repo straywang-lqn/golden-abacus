@@ -6,6 +6,8 @@
     "moduleResolution": "Bundler",
     "allowImportingTsExtensions": true,
     "strict": true,
+    // Vant 的声明引用可选路由和旧 JSX 类型；仅跳过依赖声明检查，源码仍严格校验。
+    "skipLibCheck": true,
     "jsx": "preserve",
     "resolveJsonModule": true,
     "isolatedModules": true,

@@ -34,6 +34,16 @@ These instructions apply to the whole project. Follow the user's current request
 - Handle errors where the user can act on them. Never swallow database, import, export, or save failures.
 - Do not edit generated files under `dist/`, `android/app/build/`, or generated Capacitor Gradle files by hand.
 
+## 界面风格与组件复用
+
+- 延续现有手机优先、单列、墨绿色主题；普通页面内容宽度上限为 520 px，字体使用系统字体，不引入在线字体或装饰性渐变。
+- 颜色统一引用 `src/style.css` 的语义变量（如 `--surface`、`--text`、`--muted`、`--primary`、`--primary-soft`），同时适配浅色、深色和跟随系统；组件内不要写死另一套颜色。
+- 新布局优先使用 4、8、12、16、24 px 间距。内容卡片沿用 16 px 圆角，紧凑选择块沿用 12 px，底部短弹层使用 `--radius-popup`（24 px）；主要确认按钮可使用胶囊形状。
+- 月份和日期入口统一复用 `src/components/DatePickerSheet.vue` 的 Vant `DatePicker` + `Popup`，使用中文滚轮、日期预览、浅绿色选中行和“取消 / 确定”；不要再直接调用浏览器原生日期或月份弹层。
+- Vant 组件及其样式按需引入，不全量注册或为局部需求再加另一套 UI 库。其他控件优先复用本项目现有按钮、分段控件、表单行和抽屉样式；确保第三方样式不覆盖应用字体与键盘焦点。
+- 滚动中的日期只更新弹层草稿，确认后才应用，取消保留原值。保留本地日期语义、月份边界、闰日联动和编辑记录时原有的时分秒。
+- 新控件保持至少 48 px 触摸尺寸，提供中文无障碍名称、方向键与 Tab 操作、Escape 关闭和关闭后的焦点恢复；验证 320 px 窄屏、安全区及减少动态效果偏好。
+
 ## Verification by change type
 
 - Documentation-only change: inspect the rendered text; no build is required.
@@ -60,5 +70,7 @@ These instructions apply to the whole project. Follow the user's current request
 - `src/db.ts`: IndexedDB schema, migrations, reads, writes, and atomic backup restore.
 - `src/backup.ts`: backup format and trust-boundary validation.
 - `src/App.vue`: application state and persistence orchestration.
+- `src/components/DatePickerSheet.vue`: shared Vant date/month picker, draft confirmation, and keyboard/focus behavior.
+- `src/style.css`: shared visual tokens, controls, responsive layout, and light/dark themes.
 - `android/app/build.gradle`: package ID, Android version code, and version name.
 - `scripts/build-android.ps1`: the single supported APK build entry point on this machine.

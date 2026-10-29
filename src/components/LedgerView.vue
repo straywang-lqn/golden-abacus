@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import MonthNavigation from './MonthNavigation.vue'
 import {
   formatMoney,
   formatSignedMoney,
   groupTransactionsByDay,
-  monthLabel,
   summarize,
   type Category,
   type Transaction,
@@ -21,8 +21,7 @@ const props = defineProps<{
 
 /** 页面行为交给 App.vue 统一处理，保证两个主视图共享同一状态。 */
 defineEmits<{
-  previousMonth: []
-  nextMonth: []
+  selectMonth: [month: Date]
   edit: [transaction: Transaction]
   add: []
   settings: []
@@ -38,19 +37,7 @@ const categoriesById = computed(() => new Map(props.categories.map((category) =>
 <template>
   <main class="page ledger-page">
     <!-- 月份切换和设置入口。 -->
-    <header class="top-bar">
-      <button class="icon-button" aria-label="上一个月" @click="$emit('previousMonth')">‹</button>
-      <h1>{{ monthLabel(month) }}</h1>
-      <button class="icon-button" aria-label="下一个月" @click="$emit('nextMonth')">›</button>
-      <button class="icon-button settings-button" aria-label="设置" @click="$emit('settings')">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M3 6h18M3 12h18M3 18h18" />
-          <circle cx="9" cy="6" r="2.5" />
-          <circle cx="16" cy="12" r="2.5" />
-          <circle cx="11" cy="18" r="2.5" />
-        </svg>
-      </button>
-    </header>
+    <MonthNavigation :month="month" @select-month="$emit('selectMonth', $event)" @settings="$emit('settings')" />
 
     <!-- 金额已在领域层按整数分汇总，这里只负责格式化显示。 -->
     <section class="balance-card" aria-label="本月收支汇总">
@@ -73,7 +60,11 @@ const categoriesById = computed(() => new Map(props.categories.map((category) =>
     <!-- 账目按本地日历日倒序展示，点击行进入编辑。 -->
     <section v-if="grouped.length" class="transaction-groups" aria-label="本月明细">
       <section v-for="group in grouped" :key="group.key" class="transaction-group">
-        <h2>{{ group.label }}</h2>
+        <!-- 每日合计复用整数分汇总，只显示支出，收入不抵扣当天开销。 -->
+        <h2>
+          <span>{{ group.label }}</span>
+          <span class="daily-expense">支出合计 {{ formatMoney(summarize(group.items).expense) }}</span>
+        </h2>
         <button
           v-for="item in group.items"
           :key="item.id"

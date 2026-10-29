@@ -110,7 +110,27 @@ export function monthLabel(month: Date): string {
   return `${month.getFullYear()}年${month.getMonth() + 1}月`
 }
 
-/** 按本地日期生成原生 `<input type="date">` 需要的 YYYY-MM-DD。 */
+/** 月份选择采用四位年份 1000–9999；非法或未选完的输入不改变当前月份。 */
+export function parseMonthInput(value: string): Date | null {
+  // 严格限定格式，避免 Date 自动修正越界月份或宽松解析用户输入。
+  if (!/^[1-9]\d{3}-(0[1-9]|1[0-2])$/.test(value)) return null
+  // 数值构造使用本地月初，与月度查询和前后翻月使用同一时区。
+  const [year, month] = value.split('-').map(Number)
+  return new Date(year, month - 1, 1)
+}
+
+/** 共享日期弹层返回本地日历日期，拒绝闰日和月底被 Date 自动进位的情况。 */
+export function parseDateInput(value: string): Date | null {
+  // 先复用月份校验，再要求完整的两位日期，避免宽松解析接受不完整输入。
+  if (!/^[1-9]\d{3}-\d{2}-(0[1-9]|[12]\d|3[01])$/.test(value)) return null
+  const date = parseMonthInput(value.slice(0, 7))
+  if (!date) return null
+  const day = Number(value.slice(8))
+  date.setDate(day)
+  return date.getDate() === day ? date : null
+}
+
+/** 按本地日期生成共享选择器和备份文件名使用的 YYYY-MM-DD。 */
 export function formatDateInput(timestamp: number): string {
   const date = new Date(timestamp)
   const pad = (value: number) => String(value).padStart(2, '0')
@@ -122,8 +142,8 @@ export function formatDateInput(timestamp: number): string {
  * 其他日期取中午以避开少数时区在午夜发生的夏令时切换。
  */
 export function dateInputToTimestamp(value: string, previous?: number): number {
-  // 日期未改动时保留原始发生时刻，避免编辑备注后时间被悄悄改写。
-  if (previous && formatDateInput(previous) === value) return previous
+  // 日期未改动时保留原始发生时刻；时间戳 0 也是有效记录，不能按真假值判断。
+  if (previous !== undefined && formatDateInput(previous) === value) return previous
   const [year, month, day] = value.split('-').map(Number)
   // 非今天统一取中午，规避少数时区在午夜切换夏令时造成的日期偏移。
   const chosen = new Date(year, month - 1, day, 12)
@@ -136,6 +156,41 @@ export function summarize(transactions: Transaction[]) {
   const income = transactions.reduce((sum, item) => sum + (item.type === 'income' ? item.amountCents : 0), 0)
   const expense = transactions.reduce((sum, item) => sum + (item.type === 'expense' ? item.amountCents : 0), 0)
   return { income, expense, balance: income - expense }
+}
+
+/** 按资金方向汇总分类，金额仍为整数分，百分比保留精度供条形宽度使用。 */
+export function categoryBreakdown(transactions: Transaction[], type: TransactionType) {
+  // 历史分类无论是否停用都参与汇总；收入与支出各用自己的合计作分母。
+  const amounts = new Map<string, number>()
+  let total = 0
+  for (const item of transactions) {
+    if (item.type !== type) continue
+    amounts.set(item.categoryId, (amounts.get(item.categoryId) ?? 0) + item.amountCents)
+    total += item.amountCents
+  }
+  // 空账目直接产生空列表；非空分类的正整数金额保证分母大于零。
+  return [...amounts.entries()]
+    .map(([id, amount]) => ({ id, amount, percent: (amount / total) * 100 }))
+    .sort((a, b) => b.amount - a.amount)
+}
+
+/** 返回以指定月份为终点的连续六个月统计，缺少账目的月份保留零值。 */
+export function monthlyTrend(transactions: Transaction[], month: Date, type: TransactionType) {
+  return Array.from({ length: 6 }, (_, index) => {
+    // 使用本地月初和半开边界，跨年与相邻月份都不会漏记或重复月初账目。
+    const targetMonth = shiftMonth(month, index - 5)
+    const [start, end] = monthBounds(targetMonth)
+    // 每月只累计当前资金方向，避免收入与支出在趋势中混合。
+    const amount = transactions.reduce((sum, item) => sum + (
+      item.type === type && item.occurredAt >= start && item.occurredAt < end ? item.amountCents : 0
+    ), 0)
+    return { month: targetMonth, amount }
+  })
+}
+
+/** 非零小额占比不能显示为零；其他占比最多显示一位小数。 */
+export function formatPercent(percent: number): string {
+  return percent > 0 && percent < 1 ? '<1%' : `${Number(percent.toFixed(1))}%`
 }
 
 /** 将时间戳压缩为本地日历日键。 */

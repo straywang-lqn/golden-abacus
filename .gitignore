@@ -6,3 +6,4 @@ releases/
 android/.gradle/
 android/app/build/
 android/local.properties
+debug.keystore

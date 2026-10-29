@@ -64,13 +64,19 @@ function applyTheme() {
 
 /** 并行刷新当前月列表和以当前月为终点的六个月趋势数据。 */
 async function refreshTransactions() {
-  // 当前列表只取本月；趋势从前五个月月初延伸到本月结束。
+  // 保存查询月份，防止快速切月时较慢的旧查询覆盖当前页。
+  const requestedMonth = month.value.getTime()
+  // 当前列表只取所选月；趋势从前五个月月初延伸到该月结束。
   const [start, end] = monthBounds(month.value)
   const [trendStart] = monthBounds(shiftMonth(month.value, -5))
-  ;[transactions.value, trendTransactions.value] = await Promise.all([
+  const [currentTransactions, recentTransactions] = await Promise.all([
     getTransactionsBetween(start, end),
     getTransactionsBetween(trendStart, end),
   ])
+  // 两组数据必须属于同一次选月，过期结果不写入响应式状态。
+  if (month.value.getTime() !== requestedMonth) return
+  transactions.value = currentTransactions
+  trendTransactions.value = recentTransactions
 }
 
 /** 重新载入全部持久化状态；用于启动、设置保存、清空和导入后同步界面。 */
@@ -90,9 +96,17 @@ function notify(message: string) {
   toastTimer = setTimeout(() => { toast.value = '' }, 2600)
 }
 
-/** 切换月份后异步刷新；失败提升为全局可见错误。 */
-function changeMonth(offset: number) {
-  month.value = shiftMonth(month.value, offset)
+/** 直接选月、前后月和返回本月共用刷新入口，失败保持全局可见。 */
+function selectMonth(selected: Date) {
+  // 趋势月份也能触发导航，在统一入口阻止无效日期或越过选择器边界。
+  if (!Number.isFinite(selected.getTime()) || selected.getFullYear() < 1000 || selected.getFullYear() > 9999) return
+  // 月份状态始终归一到 1 日；同月选择不重复读取数据库。
+  const normalized = shiftMonth(selected, 0)
+  if (normalized.getTime() === month.value.getTime()) return
+  month.value = normalized
+  // 立即清掉上一月显示值，避免新标题短暂配上旧月份金额。
+  transactions.value = []
+  trendTransactions.value = []
   refreshTransactions().catch(showFatalError)
 }
 
@@ -288,8 +302,7 @@ onMounted(async () => {
       :transactions="transactions"
       :categories="categories"
       :show-storage-notice="!settings.seenStorageNotice"
-      @previous-month="changeMonth(-1)"
-      @next-month="changeMonth(1)"
+      @select-month="selectMonth"
       @edit="openEditEntry"
       @add="openNewEntry"
       @settings="settingsOpen = true"
@@ -301,8 +314,7 @@ onMounted(async () => {
       :transactions="transactions"
       :trend-transactions="trendTransactions"
       :categories="categories"
-      @previous-month="changeMonth(-1)"
-      @next-month="changeMonth(1)"
+      @select-month="selectMonth"
       @edit="openEditEntry"
       @settings="settingsOpen = true"
     />
