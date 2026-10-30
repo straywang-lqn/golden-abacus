@@ -7,3 +7,5 @@ android/.gradle/
 android/app/build/
 android/local.properties
 debug.keystore
+.DS_Store
+.idea/

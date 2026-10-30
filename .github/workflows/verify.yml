@@ -1,0 +1,41 @@
+name: Verify
+
+# PR 与主分支使用同一检查；不把本地 Android 签名密钥上传到 CI。
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# 校验任务只读源码，不授予写仓库或访问发布凭据的权限。
+permissions:
+  contents: read
+
+# 新提交取代同一 PR 的旧检查，避免过期结果浪费运行时间。
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # 主分支保护固定要求此名称；改名时必须同步远端 required check。
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: 安装固定版本 pnpm
+        run: npm install --global pnpm@11.2.1
+      - name: 按锁文件安装依赖
+        run: pnpm install --frozen-lockfile
+      - name: 检查产品版本
+        run: pnpm check:version
+      - name: 运行测试
+        run: pnpm test
+      - name: 类型检查与 Web 构建
+        run: pnpm build

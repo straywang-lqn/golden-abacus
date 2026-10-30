@@ -9,7 +9,8 @@ These instructions apply to the whole project. Follow the user's current request
 - Data is stored in the WebView's IndexedDB. There is no account, server, sync, analytics, or upload.
 - Money is always stored as integer cents. Timestamps are Unix milliseconds.
 - Package manager: pnpm 11.2.1. Node.js must be 22.6 or newer.
-- The workspace currently has no Git repository. Do not assume Git history or use destructive Git commands.
+- The project is tracked in Git; `main` is the protected, releasable branch. Start each change on a short-lived `codex/<topic>` branch and merge through a pull request after the required `verify` check passes.
+- Follow `CONTRIBUTING.md` for branch, validation, and release steps. Never force-push, rewrite published history, or include unrelated local changes in a commit.
 
 ## Keep existing data upgradeable
 
@@ -62,6 +63,8 @@ These instructions apply to the whole project. Follow the user's current request
 - Android SDK is configured in `android/local.properties`.
 - The build script verifies the keystore certificate before Gradle starts and passes its absolute path through `GOLDEN_ABACUS_KEYSTORE`; keep this explicit signing configuration so Gradle cannot silently switch upgrade keys.
 - Increment Android `versionCode` before producing a version newer than an APK already delivered to the user. Keep `versionName` human-readable.
+- Android `versionName` is the product version; the private npm package does not carry a separate version. `release-baseline.json` records the pre-workflow delivery baseline; fetched `vX.Y.Z` tags and existing local APKs provide subsequent version floors.
+- Keep `CHANGELOG.md` current. Publish only a clean, merged commit, tag it as `v<versionName>`, and archive the APK, SHA-256, and build manifest in its GitHub Release. Never invent source commits for historical APKs.
 - Do not increment IndexedDB `DB_VERSION` merely because Android `versionCode` changed.
 - Build with `pnpm android:apk`. Deliver the versioned APK from `releases/`, not the mutable Gradle output path.
 
