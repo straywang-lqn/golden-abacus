@@ -9,7 +9,7 @@
     "test": "node --experimental-strip-types --test src/domain.test.ts src/backup.test.ts",
     "android:add": "cap add android",
     "android:sync": "pnpm build && cap sync android",
-    "android:apk": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-android.ps1",
+    "android:apk": "node scripts/build-android.mjs",
     "android:open": "cap open android"
   },
   "dependencies": {

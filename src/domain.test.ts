@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { categoryBreakdown, dateInputToTimestamp, formatDateInput, formatPercent, monthBounds, monthlyTrend, parseDateInput, parseMonthInput, summarize, toCents, type Transaction } from './domain.ts'
+import { DEFAULT_CATEGORIES, DEFAULT_SETTINGS, budgetForMonth, budgetProgress, categoryBreakdown, copyEntryDraft, dateInputToTimestamp, filterTransactions, formatDateInput, formatPercent, monthBounds, monthlyTrend, needsBackupReminder, parseDateInput, parseMonthInput, summarize, toCents, type MonthlyBudget, type Transaction, type TransactionFilter } from './domain.ts'
 
 // 覆盖金额解析、整数分汇总，以及十二月跨年时的半开月份边界。
 test('金额和月度汇总使用整数分计算', () => {
@@ -121,4 +121,69 @@ test('日期选择校验真实日历日期并保留编辑记录的时分秒', ()
   const previous = new Date(2024, 1, 29, 19, 27, 43, 321).getTime()
   assert.equal(dateInputToTimestamp('2024-02-29', previous), previous)
   assert.equal(dateInputToTimestamp(formatDateInput(0), 0), 0)
+})
+
+// 搜索必须跨月、包含起止整天、组合所有条件，并保留停用分类和原数组顺序。
+test('跨月搜索组合备注、分类、收支、金额和本地日期边界', () => {
+  const base = { type: 'expense' as const, categoryId: 'expense-food', amountCents: 1200, createdAt: 1, updatedAt: 1 }
+  const rows: Transaction[] = [
+    { ...base, id: 'a', note: '早餐 Coffee', occurredAt: new Date(2026, 8, 30, 23, 59, 59, 999).getTime() },
+    { ...base, id: 'b', note: '午餐', amountCents: 2000, occurredAt: new Date(2026, 9, 1).getTime() },
+    { ...base, id: 'c', type: 'income', categoryId: 'income-salary', note: '工资', occurredAt: new Date(2026, 9, 1).getTime() },
+    { ...base, id: 'd', note: '午餐', occurredAt: new Date(2026, 9, 2).getTime() },
+  ]
+  const original = structuredClone(rows)
+  const filter: TransactionFilter = { query: '', type: 'all', categoryId: '', minCents: null, maxCents: null, startDate: '', endDate: '' }
+  const categories = DEFAULT_CATEGORIES.map((category) => ({ ...category, active: false }))
+  assert.deepEqual(filterTransactions(rows, categories, { ...filter, query: ' COFFEE ' }).map((item) => item.id), ['a'])
+  assert.deepEqual(filterTransactions(rows, categories, { ...filter, query: '餐饮', type: 'expense', minCents: 1200, maxCents: 2000, startDate: '2026-09-30', endDate: '2026-10-01' }).map((item) => item.id), ['b', 'a'])
+  assert.deepEqual(filterTransactions(rows, categories, { ...filter, categoryId: 'income-salary' }).map((item) => item.id), ['c'])
+  assert.deepEqual(filterTransactions(rows, categories, { ...filter, query: '午餐', maxCents: 1200 }).map((item) => item.id), ['d'])
+  assert.deepEqual(filterTransactions(rows, categories, { ...filter, startDate: '2026-02-30' }), [])
+  assert.deepEqual(rows, original)
+  assert.equal(toCents('0.00', true), 0)
+  assert.equal(toCents('-1', true), null)
+  assert.equal(toCents('9007199254740992', true), null)
+})
+
+// 复制是新草稿，不能带走原主键、原日期或失效的分类选择。
+test('再记一笔保留业务内容但使用今天和有效分类', () => {
+  const item: Transaction = { id: 'original', type: 'expense', amountCents: 1234, categoryId: 'expense-food', note: '午餐', occurredAt: 1, createdAt: 1, updatedAt: 1 }
+  const now = new Date(2026, 9, 30, 13, 20).getTime()
+  const draft = copyEntryDraft(item, DEFAULT_CATEGORIES, now)
+  assert.deepEqual(draft, { type: 'expense', amountCents: 1234, categoryId: 'expense-food', note: '午餐', occurredAt: now })
+  assert.equal(copyEntryDraft(item, DEFAULT_CATEGORIES.map((category) => ({ ...category, active: false })), now).categoryId, '')
+  assert.equal(item.occurredAt, 1)
+  assert.equal(item.id, 'original')
+})
+
+// 历史预算不随未来设置改变，空配置可以从某月起显式停用沿用的预算。
+test('预算按月沿用最近配置并隔离收入与不同分类', () => {
+  const first: MonthlyBudget = { month: '2026-09', totalCents: 2000, categoryLimits: [{ categoryId: 'expense-food', amountCents: 1000 }] }
+  const second: MonthlyBudget = { month: '2026-11', totalCents: 3000, categoryLimits: [] }
+  const disabled: MonthlyBudget = { month: '2026-12', totalCents: null, categoryLimits: [] }
+  const budgets = [second, disabled, first]
+  assert.equal(budgetForMonth(budgets, new Date(2026, 7, 1)), undefined)
+  assert.equal(budgetForMonth(budgets, new Date(2026, 9, 1)), first)
+  assert.equal(budgetForMonth(budgets, new Date(2026, 10, 1)), second)
+  assert.equal(budgetForMonth(budgets, new Date(2027, 0, 1)), disabled)
+  const base = { id: 'a', note: '', occurredAt: 1, createdAt: 1, updatedAt: 1 }
+  assert.deepEqual(budgetProgress(first, [
+    { ...base, type: 'expense', categoryId: 'expense-food', amountCents: 1500 },
+    { ...base, id: 'b', type: 'expense', categoryId: 'expense-other', amountCents: 1000 },
+    { ...base, id: 'c', type: 'income', categoryId: 'income-salary', amountCents: 100000 },
+  ]), { expense: 2500, remaining: -500, categories: [{ categoryId: 'expense-food', amountCents: 1000, spent: 1500, remaining: -500 }] })
+  assert.equal(budgetProgress(disabled, []).remaining, null)
+})
+
+// 提醒只针对有数据的设备，准确覆盖首次导出、七天边界、开关和时钟回拨。
+test('备份提醒遵守七天间隔与用户开关', () => {
+  const now = Date.UTC(2026, 9, 30)
+  const week = 7 * 24 * 60 * 60 * 1000
+  assert.equal(needsBackupReminder(DEFAULT_SETTINGS, false, now), false)
+  assert.equal(needsBackupReminder(DEFAULT_SETTINGS, true, now), true)
+  assert.equal(needsBackupReminder({ ...DEFAULT_SETTINGS, lastExportedAt: now - week + 1 }, true, now), false)
+  assert.equal(needsBackupReminder({ ...DEFAULT_SETTINGS, lastExportedAt: now - week }, true, now), true)
+  assert.equal(needsBackupReminder({ ...DEFAULT_SETTINGS, backupReminderEnabled: false }, true, now), false)
+  assert.equal(needsBackupReminder({ ...DEFAULT_SETTINGS, lastExportedAt: now + 1 }, true, now), false)
 })

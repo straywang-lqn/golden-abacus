@@ -3,10 +3,12 @@ import { computed } from 'vue'
 import MonthNavigation from './MonthNavigation.vue'
 import {
   formatMoney,
+  budgetProgress,
   formatSignedMoney,
   groupTransactionsByDay,
   summarize,
   type Category,
+  type MonthlyBudget,
   type Transaction,
 } from '../domain'
 
@@ -17,6 +19,9 @@ const props = defineProps<{
   transactions: Transaction[]
   categories: Category[]
   showStorageNotice: boolean
+  budget?: MonthlyBudget
+  showBackupReminder: boolean
+  saving: boolean
 }>()
 
 /** 页面行为交给 App.vue 统一处理，保证两个主视图共享同一状态。 */
@@ -26,12 +31,19 @@ defineEmits<{
   add: []
   settings: []
   dismissNotice: []
+  search: []
+  budget: []
+  exportData: []
 }>()
 
 // 三个派生值随 props 自动更新，模板不重复执行汇总、分组和分类查找。
 const summary = computed(() => summarize(props.transactions))
 const grouped = computed(() => groupTransactionsByDay(props.transactions))
 const categoriesById = computed(() => new Map(props.categories.map((category) => [category.id, category])))
+// 总额与分类预算分别统计，关闭预算的月份只显示设置入口。
+const progress = computed(() => props.budget ? budgetProgress(props.budget, props.transactions) : null)
+const hasBudget = computed(() => !!props.budget && (props.budget.totalCents !== null || props.budget.categoryLimits.length > 0))
+const exceededCategories = computed(() => progress.value?.categories.filter((category) => category.remaining < 0).length ?? 0)
 </script>
 
 <template>
@@ -49,12 +61,34 @@ const categoriesById = computed(() => new Map(props.categories.map((category) =>
       </div>
     </section>
 
+    <!-- 搜索包含全部历史，预算只比较当前选择月份的支出。 -->
+    <button class="ledger-search-button" @click="$emit('search')"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6" /><path d="m15 15 5 5" /></svg><span>搜索全部账目</span><small>备注、分类、金额、日期</small></button>
+    <button class="budget-card" aria-label="查看和设置月度预算" @click="$emit('budget')">
+      <span class="budget-card-heading"><b>本月预算</b><span>{{ hasBudget ? '调整预算' : '设置预算' }}</span></span>
+      <template v-if="hasBudget && progress">
+        <template v-if="budget?.totalCents !== null && progress.remaining !== null">
+          <strong :class="{ expense: progress.remaining < 0 }">{{ progress.remaining < 0 ? '已超支' : '还可支出' }} {{ formatMoney(Math.abs(progress.remaining)) }}</strong>
+          <span class="budget-amounts">已花 {{ formatMoney(progress.expense) }} / {{ formatMoney(budget!.totalCents!) }}</span>
+          <progress :value="Math.min(progress.expense, budget!.totalCents!)" :max="budget!.totalCents!" aria-label="月度总预算使用进度"></progress>
+        </template>
+        <span v-else class="field-help">已设置 {{ budget?.categoryLimits.length }} 项分类预算</span>
+        <span v-if="exceededCategories" class="expense">{{ exceededCategories }} 项分类已超支，点击查看</span>
+        <span v-else-if="budget?.categoryLimits.length" class="field-help">{{ budget.categoryLimits.length }} 项分类预算均未超支</span>
+      </template>
+      <span v-else class="field-help">设个额度，看看这个月还能花多少</span>
+    </button>
+
     <aside v-if="showStorageNotice" class="storage-notice" role="note">
       <div>
         <b>数据只保存在本机</b>
         <p>卸载或清除应用数据后无法恢复。</p>
       </div>
       <button class="text-button" @click="$emit('dismissNotice')">知道了</button>
+    </aside>
+
+    <aside v-if="showBackupReminder" class="storage-notice backup-notice" role="note">
+      <div><b>该备份账目了</b><p>请将备份文件保存到应用之外，方便换机或恢复。</p></div>
+      <button class="text-button" :disabled="saving" @click="$emit('exportData')">{{ saving ? '导出中' : '导出备份' }}</button>
     </aside>
 
     <!-- 账目按本地日历日倒序展示，点击行进入编辑。 -->

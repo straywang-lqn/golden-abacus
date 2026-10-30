@@ -9,19 +9,33 @@ import { BACKUP_FORMAT_VERSION, type BackupData } from './backup'
 
 // 这两个值共同定义现有用户数据的身份。仅在追加真实迁移时递增 DB_VERSION。
 const DB_NAME = 'golden-abacus'
-const DB_VERSION = 1
+const DB_VERSION = 2
 
 // 所有调用方共享一次打开操作，避免重复连接和并发升级。
 let databasePromise: Promise<IDBDatabase> | undefined
 
 /** 在 IndexedDB 自带的升级事务中按版本顺序建立或迁移结构。 */
-function migrateDatabase(db: IDBDatabase, oldVersion: number) {
+function migrateDatabase(db: IDBDatabase, oldVersion: number, transaction: IDBTransaction) {
   // Keep shipped migrations unchanged; append a guard and bump DB_VERSION for each schema change.
   if (oldVersion < 1) {
     const transactions = db.createObjectStore('transactions', { keyPath: 'id' })
     transactions.createIndex('occurredAt', 'occurredAt')
     db.createObjectStore('categories', { keyPath: 'id' })
     db.createObjectStore('settings', { keyPath: 'key' })
+  }
+  // 为既有设置追加预算和导出状态，所有写入仍属于原生升级事务。
+  if (oldVersion < 2) {
+    const settings = transaction.objectStore('settings')
+    const request = settings.get('app')
+    request.onsuccess = () => {
+      // 全新数据库尚无单例设置，交给 initializeDatabase 写入；升级不动原账目。
+      if (request.result) settings.put({ key: 'app', value: {
+        ...request.result.value,
+        budgets: [],
+        lastExportedAt: null,
+        backupReminderEnabled: true,
+      } })
+    }
   }
 }
 
@@ -49,7 +63,7 @@ export function openDatabase(): Promise<IDBDatabase> {
   databasePromise = new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION)
     // 所有结构变更只能在浏览器提供的升级事务里执行。
-    request.onupgradeneeded = (event) => migrateDatabase(request.result, event.oldVersion)
+    request.onupgradeneeded = (event) => migrateDatabase(request.result, event.oldVersion, request.transaction!)
     request.onsuccess = () => {
       // 其他标签页升级时释放连接，避免阻塞其版本迁移。
       request.result.onversionchange = () => request.result.close()
@@ -98,7 +112,11 @@ export async function getSettings(): Promise<AppSettings> {
 export async function saveSettings(settings: AppSettings): Promise<void> {
   const db = await openDatabase()
   const transaction = db.transaction('settings', 'readwrite')
-  transaction.objectStore('settings').put({ key: 'app', value: settings })
+  // 预算包含嵌套响应式数组，逐层构造普通对象，避免 IndexedDB 克隆 Vue 代理失败。
+  transaction.objectStore('settings').put({ key: 'app', value: {
+    ...settings,
+    budgets: settings.budgets.map((budget) => ({ ...budget, categoryLimits: budget.categoryLimits.map((limit) => ({ ...limit })) })),
+  } })
   await complete(transaction)
 }
 
@@ -108,6 +126,18 @@ export async function getTransactionsBetween(start: number, end: number): Promis
   const index = db.transaction('transactions').objectStore('transactions').index('occurredAt')
   // 下界包含、上界排除，使相邻月份查询不会重复月初账目。
   return result<Transaction[]>(index.getAll(IDBKeyRange.bound(start, end, false, true)))
+}
+
+/** 搜索按需读取全部账目；首页不为跨月搜索额外加载历史数据。 */
+export async function getAllTransactions(): Promise<Transaction[]> {
+  const db = await openDatabase()
+  return result<Transaction[]>(db.transaction('transactions').objectStore('transactions').getAll())
+}
+
+/** 仅检查是否存在账目，供备份提醒使用，不把全部历史载入内存。 */
+export async function hasTransactions(): Promise<boolean> {
+  const db = await openDatabase()
+  return (await result(db.transaction('transactions').objectStore('transactions').count())) > 0
 }
 
 /** 按主键新增或覆盖一笔账目。调用方必须传入可结构化克隆的普通对象。 */

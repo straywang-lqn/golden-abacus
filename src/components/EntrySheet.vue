@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import DatePickerSheet from './DatePickerSheet.vue'
 import {
   dateInputToTimestamp,
@@ -11,11 +11,13 @@ import {
   type Transaction,
   type TransactionType,
 } from '../domain'
+import { useSheetFocus } from '../useSheetFocus'
 
 /** 新建时 editing 为 null；编辑时表单从该记录复制初值。 */
 const props = defineProps<{
   categories: Category[]
   editing: Transaction | null
+  initialDraft: EntryDraft | null
   saving: boolean
   saveError: string
 }>()
@@ -25,6 +27,7 @@ const emit = defineEmits<{
   close: []
   save: [draft: EntryDraft]
   delete: [id: string]
+  copy: [item: Transaction]
 }>()
 
 // 抽屉每次通过 v-if 重新创建，因此这些值只需从 props 初始化一次。
@@ -40,6 +43,8 @@ const datePickerOpen = ref(false)
 const error = ref('')
 const confirmDelete = ref(false)
 const amountInput = ref<HTMLInputElement>()
+const panel = ref<HTMLElement>()
+useSheetFocus(panel, () => { if (!props.saving && !datePickerOpen.value) emit('close') })
 
 // 编辑旧账目时保留其已停用分类，避免仅打开表单就迫使用户改分类。
 const availableCategories = computed(() => props.categories
@@ -51,8 +56,18 @@ watch(type, () => {
   if (!availableCategories.value.some((category) => category.id === categoryId.value)) categoryId.value = ''
 })
 
-// 等抽屉输入框挂载后聚焦，移动端可直接开始输入金额。
-onMounted(() => nextTick(() => amountInput.value?.focus()))
+// “再记一笔”在同一抽屉切换草稿，保留最初打开入口供关闭时恢复焦点。
+watch(() => props.initialDraft, (draft) => {
+  if (!draft) return
+  type.value = draft.type
+  amount.value = (draft.amountCents / 100).toFixed(2)
+  categoryId.value = draft.categoryId
+  note.value = draft.note
+  date.value = formatDateInput(draft.occurredAt)
+  error.value = ''
+  confirmDelete.value = false
+  nextTick(() => amountInput.value?.focus())
+})
 
 /** 校验金额和分类，再把元字符串转换成整数分草稿。 */
 function submit() {
@@ -85,10 +100,10 @@ function submit() {
 </script>
 
 <template>
-  <div class="sheet-backdrop" @click.self="$emit('close')">
-    <section class="sheet entry-sheet" role="dialog" aria-modal="true" :aria-label="editing ? '编辑记录' : '记一笔'">
+  <div class="sheet-backdrop" @click.self="!saving && $emit('close')">
+    <section ref="panel" class="sheet entry-sheet" role="dialog" aria-modal="true" :aria-label="editing ? '编辑记录' : '记一笔'">
       <header class="sheet-header">
-        <button class="text-button" @click="$emit('close')">取消</button>
+        <button class="text-button" :disabled="saving" @click="$emit('close')">取消</button>
         <h1>{{ editing ? '编辑记录' : '记一笔' }}</h1>
         <span></span>
       </header>
@@ -104,6 +119,7 @@ function submit() {
           <span>¥</span>
           <input
             ref="amountInput"
+            data-initial-focus
             v-model="amount"
             inputmode="decimal"
             autocomplete="off"
@@ -143,11 +159,12 @@ function submit() {
 
         <!-- 删除采用抽屉内二次确认，避免误触立即破坏数据。 -->
         <div v-if="editing" class="delete-area">
-          <button v-if="!confirmDelete" type="button" class="danger-text" @click="confirmDelete = true">删除这笔记录</button>
+          <button type="button" class="secondary-button repeat-entry-button" :disabled="saving" @click="$emit('copy', editing)">再记一笔</button>
+          <button v-if="!confirmDelete" type="button" class="danger-text" :disabled="saving" @click="confirmDelete = true">删除这笔记录</button>
           <div v-else class="inline-confirm" role="alert">
             <span>删除后无法恢复</span>
             <button type="button" @click="confirmDelete = false">取消</button>
-            <button type="button" class="danger-button" @click="$emit('delete', editing.id)">确认删除</button>
+            <button type="button" class="danger-button" :disabled="saving" @click="$emit('delete', editing.id)">确认删除</button>
           </div>
         </div>
 

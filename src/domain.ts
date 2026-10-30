@@ -30,11 +30,23 @@ export type Category = {
   active: boolean
 }
 
+/** 某月起生效的预算；后续月份沿用，遇到下一份配置时停止沿用。 */
+export type MonthlyBudget = {
+  month: string
+  /** null 表示不限制总额；分类限额独立计算，收入不抵扣支出。 */
+  totalCents: number | null
+  categoryLimits: { categoryId: string; amountCents: number }[]
+}
+
 /** 单例应用设置，以 `settings/app` 记录持久化。 */
 export type AppSettings = {
   currency: 'CNY'
   theme: Theme
   seenStorageNotice: boolean
+  budgets: MonthlyBudget[]
+  /** 仅记录已触发下载或完成分享的时刻，不能证明用户已保存文件。 */
+  lastExportedAt: number | null
+  backupReminderEnabled: boolean
 }
 
 /** 新建或编辑表单提交的业务字段；主键和审计时间由 App.vue 补齐。 */
@@ -45,6 +57,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   currency: 'CNY',
   theme: 'system',
   seenStorageNotice: false,
+  budgets: [],
+  lastExportedAt: null,
+  backupReminderEnabled: true,
 }
 
 /** 首次启动时写入 IndexedDB 的内置分类。固定 id 保证历史账目的引用稳定。 */
@@ -71,15 +86,82 @@ const currencyFormatter = new Intl.NumberFormat('zh-CN', {
   minimumFractionDigits: 2,
 })
 
-/** 将用户输入的元转换为整数分；非法格式、零值和溢出都返回 null。 */
-export function toCents(raw: string): number | null {
+/** 将元转换为整数分；默认拒绝零值，金额筛选边界可显式允许零。 */
+export function toCents(raw: string, allowZero = false): number | null {
   const value = raw.trim()
   // 不接受负数、科学计数法或第三位小数，避免 Number 的宽松解析改变用户输入。
   if (!/^\d+(?:\.\d{0,2})?$/.test(value)) return null
   const [yuan, fraction = ''] = value.split('.')
   // 补足两位小数后再整体转成分，业务计算全程避免浮点金额。
   const cents = Number(yuan) * 100 + Number(fraction.padEnd(2, '0'))
-  return cents > 0 && Number.isSafeInteger(cents) ? cents : null
+  return (cents > 0 || (allowZero && cents === 0)) && Number.isSafeInteger(cents) ? cents : null
+}
+
+/** 复制业务内容并重设为今天；停用分类必须重新选择，不复制主键与审计字段。 */
+export function copyEntryDraft(item: Transaction, categories: Category[], now = Date.now()): EntryDraft {
+  return {
+    type: item.type,
+    amountCents: item.amountCents,
+    categoryId: categories.some((category) => category.id === item.categoryId && category.active && category.type === item.type) ? item.categoryId : '',
+    note: item.note,
+    occurredAt: now,
+  }
+}
+
+/** 跨月搜索的条件；空文本和 null 金额表示不限制，日期包含起止两天。 */
+export type TransactionFilter = {
+  query: string
+  type: TransactionType | 'all'
+  categoryId: string
+  minCents: number | null
+  maxCents: number | null
+  startDate: string
+  endDate: string
+}
+
+/** 组合筛选全部账目，保留停用分类并返回按发生时间倒序的新数组。 */
+export function filterTransactions(transactions: Transaction[], categories: Category[], filter: TransactionFilter): Transaction[] {
+  const names = new Map(categories.map((category) => [category.id, category.name]))
+  const query = filter.query.trim().toLocaleLowerCase('zh-CN')
+  const start = filter.startDate ? parseDateInput(filter.startDate) : null
+  const end = filter.endDate ? parseDateInput(filter.endDate) : null
+  // 日期无效时不扩大查询；结束边界使用本地下一个日历日，兼容夏令时。
+  if ((filter.startDate && !start) || (filter.endDate && !end)) return []
+  if (end) end.setDate(end.getDate() + 1)
+  return transactions.filter((item) => (
+    (filter.type === 'all' || item.type === filter.type)
+    && (!filter.categoryId || item.categoryId === filter.categoryId)
+    && (filter.minCents === null || item.amountCents >= filter.minCents)
+    && (filter.maxCents === null || item.amountCents <= filter.maxCents)
+    && (!start || item.occurredAt >= start.getTime())
+    && (!end || item.occurredAt < end.getTime())
+    && (!query || `${item.note}\n${names.get(item.categoryId) ?? ''}`.toLocaleLowerCase('zh-CN').includes(query))
+  )).sort((a, b) => b.occurredAt - a.occurredAt)
+}
+
+/** 获取指定月最近一次生效的预算；未来配置不影响历史月份。 */
+export function budgetForMonth(budgets: MonthlyBudget[], month: Date): MonthlyBudget | undefined {
+  const key = formatDateInput(month.getTime()).slice(0, 7)
+  return budgets.filter((budget) => budget.month <= key).sort((a, b) => b.month.localeCompare(a.month))[0]
+}
+
+/** 将月度支出与总额、分类限额比较；超支保留负余额供文案呈现。 */
+export function budgetProgress(budget: MonthlyBudget, transactions: Transaction[]) {
+  const expense = summarize(transactions).expense
+  return {
+    expense,
+    remaining: budget.totalCents === null ? null : budget.totalCents - expense,
+    categories: budget.categoryLimits.map((limit) => {
+      const spent = transactions.reduce((sum, item) => sum + (item.type === 'expense' && item.categoryId === limit.categoryId ? item.amountCents : 0), 0)
+      return { ...limit, spent, remaining: limit.amountCents - spent }
+    }),
+  }
+}
+
+/** 有账目时每七天在应用内提示导出；关闭提醒或时钟回拨时不误报。 */
+export function needsBackupReminder(settings: AppSettings, hasTransactions: boolean, now = Date.now()): boolean {
+  return settings.backupReminderEnabled && hasTransactions
+    && (settings.lastExportedAt === null || now - settings.lastExportedAt >= 7 * 24 * 60 * 60 * 1000)
 }
 
 /** 将整数分按人民币格式显示。 */

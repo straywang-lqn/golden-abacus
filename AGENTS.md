@@ -57,9 +57,10 @@ These instructions apply to the whole project. Follow the user's current request
 - Build the current personal-installation line as Debug so it remains signed by the existing debug key.
 - Expected package ID: `com.goldenabacus.app`.
 - Expected signer SHA-256: `5c7ad0becc97ddd99acefdc14f07ec510e903c053d20330b5b81cca7938ad434`.
-- Expected key location: `%USERPROFILE%\.android\debug.keystore`. Never delete, replace, or regenerate it. If missing or the signer differs, stop before producing an upgrade APK.
-- JDK 21 is installed at `%LOCALAPPDATA%\GoldenAbacus\jdk-21\jdk-21.0.12.1+1`; the build script sets `JAVA_HOME` for its own process.
+- Use the migrated `debug.keystore` at the project root; the build script falls back to the existing user-home `.android/debug.keystore` for the original Windows setup. Never delete, replace, or regenerate either key. If missing or the signer differs, stop before producing an upgrade APK.
+- Use JDK 21 from `JAVA_HOME`, the macOS registered JDK, or the original Windows location `%LOCALAPPDATA%\GoldenAbacus\jdk-21\jdk-21.0.12.1+1`. The build script sets `JAVA_HOME` only for its own process tree.
 - Android SDK is configured in `android/local.properties`.
+- The build script verifies the keystore certificate before Gradle starts and passes its absolute path through `GOLDEN_ABACUS_KEYSTORE`; keep this explicit signing configuration so Gradle cannot silently switch upgrade keys.
 - Increment Android `versionCode` before producing a version newer than an APK already delivered to the user. Keep `versionName` human-readable.
 - Do not increment IndexedDB `DB_VERSION` merely because Android `versionCode` changed.
 - Build with `pnpm android:apk`. Deliver the versioned APK from `releases/`, not the mutable Gradle output path.
@@ -73,4 +74,5 @@ These instructions apply to the whole project. Follow the user's current request
 - `src/components/DatePickerSheet.vue`: shared Vant date/month picker, draft confirmation, and keyboard/focus behavior.
 - `src/style.css`: shared visual tokens, controls, responsive layout, and light/dark themes.
 - `android/app/build.gradle`: package ID, Android version code, and version name.
-- `scripts/build-android.ps1`: the single supported APK build entry point on this machine.
+- `scripts/build-android.mjs`: cross-platform implementation of `pnpm android:apk`, including signing and artifact verification.
+- `scripts/build-android.ps1`: legacy Windows wrapper that forwards to the same build command.

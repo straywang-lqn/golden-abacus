@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import type { AppSettings, Category, Theme, TransactionType } from '../domain'
+import { formatDateInput, type AppSettings, type Category, type Theme, type TransactionType } from '../domain'
+import { useSheetFocus } from '../useSheetFocus'
 
 /** 设置抽屉接收当前快照，只有用户保存或执行数据操作时才通知父组件。 */
 const props = defineProps<{
@@ -21,6 +22,8 @@ const emit = defineEmits<{
 // 深度仅一层的普通对象副本足以隔离表单编辑，避免直接修改 props。
 const localCategories = ref(props.categories.map((category) => ({ ...category })))
 const theme = ref<Theme>(props.settings.theme)
+// 开关随设置一起保存，取消不改变持久化提醒偏好。
+const backupReminderEnabled = ref(props.settings.backupReminderEnabled)
 
 // 新分类表单状态与设置保存错误。
 const newType = ref<TransactionType>('expense')
@@ -29,6 +32,8 @@ const newIcon = ref('✨')
 const error = ref('')
 const confirmClear = ref(false)
 const backupInput = ref<HTMLInputElement>()
+const panel = ref<HTMLElement>()
+useSheetFocus(panel, () => { if (!props.saving) emit('close') })
 
 /** 返回指定收支类型的本地分类副本，并按显示顺序排列。 */
 function categoriesFor(type: TransactionType) {
@@ -77,7 +82,7 @@ function submit() {
     ...category,
     name: category.name.trim(),
     icon: category.icon.trim(),
-  })), { ...props.settings, theme: theme.value })
+  })), { ...props.settings, theme: theme.value, backupReminderEnabled: backupReminderEnabled.value })
 }
 
 /** 取单个备份文件上抛，并重置 input 以允许再次选择同一文件。 */
@@ -92,10 +97,10 @@ function selectBackup(event: Event) {
 </script>
 
 <template>
-  <div class="sheet-backdrop" @click.self="$emit('close')">
-    <section class="sheet settings-sheet" role="dialog" aria-modal="true" aria-label="设置">
+  <div class="sheet-backdrop" @click.self="!saving && $emit('close')">
+    <section ref="panel" class="sheet settings-sheet" role="dialog" aria-modal="true" aria-label="设置">
       <header class="sheet-header">
-        <button class="text-button" @click="$emit('close')">取消</button>
+        <button class="text-button" :disabled="saving" @click="$emit('close')">取消</button>
         <h1>设置</h1>
         <button class="text-button" :disabled="saving" @click="submit">{{ saving ? '保存中' : '保存' }}</button>
       </header>
@@ -143,12 +148,15 @@ function selectBackup(event: Event) {
           <h2>隐私与数据</h2>
           <p><b>所有数据仅保存在此设备。</b></p>
           <p>应用不登录、不同步、不上传数据。卸载或清除应用数据前，请先导出备份。</p>
+          <p>最近导出：{{ settings.lastExportedAt === null ? '尚未导出' : `${formatDateInput(settings.lastExportedAt)} ${new Date(settings.lastExportedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}` }}</p>
+          <label class="backup-reminder-toggle"><span>每 7 天在应用内提醒备份</span><input v-model="backupReminderEnabled" type="checkbox" aria-label="开启应用内备份提醒"></label>
           <div class="theme-options">
             <button :disabled="saving" @click="$emit('exportData')">导出备份</button>
             <button :disabled="saving" @click="backupInput?.click()">导入备份</button>
             <input ref="backupInput" hidden type="file" accept="application/json,.json" @change="selectBackup">
           </div>
           <p>导入前会校验文件，并在确认后替换当前全部数据。</p>
+          <p>导出时间仅记录下载或分享操作，请确认文件已保存到应用之外。</p>
           <button v-if="!confirmClear" class="danger-text" @click="confirmClear = true">清空全部数据</button>
           <div v-else class="clear-confirm" role="alert">
             <b>此操作不可恢复</b>
