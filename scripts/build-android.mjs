@@ -5,10 +5,14 @@ import { constants, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSy
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { assertVersionProgression, getReleaseBaseline, readAndroidVersion } from './version.mjs'
 
 // 目录始终相对于脚本定位，调用者无需先切到项目根目录。
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const androidRoot = join(projectRoot, 'android')
+// 在调用 Android 工具链前拒绝复用已交付或已构建版本，减少无效打包。
+const currentVersion = readAndroidVersion(readFileSync(join(androidRoot, 'app', 'build.gradle'), 'utf8'))
+assert.ok(assertVersionProgression(currentVersion, getReleaseBaseline()), '新 APK 必须同时递增 versionCode 和 versionName')
 // 包名和证书共同标识现有安装，构建前后都不能改变。
 const expectedAppId = 'com.goldenabacus.app'
 const expectedSigner = '5c7ad0becc97ddd99acefdc14f07ec510e903c053d20330b5b81cca7938ad434'
@@ -81,8 +85,8 @@ const metadata = JSON.parse(readFileSync(join(outputRoot, 'output-metadata.json'
 assert.equal(metadata.applicationId, expectedAppId, 'Gradle 包名不匹配')
 assert.equal(metadata.elements.length, 1, '预期只有一个通用 APK')
 const element = metadata.elements[0]
-assert.ok(Number.isSafeInteger(element.versionCode) && element.versionCode > 3, '升级包必须递增 versionCode')
-assert.match(element.versionName, /^\d+\.\d+\.\d+$/, 'versionName 必须是可读的三段版本号')
+assert.equal(element.versionCode, currentVersion.versionCode, 'Gradle 产物 versionCode 与源码不一致')
+assert.equal(element.versionName, currentVersion.versionName, 'Gradle 产物 versionName 与源码不一致')
 const packageLine = run(aapt, ['dump', 'badging', apk], true).split('\n').find((line) => line.startsWith('package:'))
 assert.ok(packageLine?.includes(`name='${expectedAppId}'`) && packageLine.includes(`versionCode='${element.versionCode}'`) && packageLine.includes(`versionName='${element.versionName}'`), 'APK 实际包名或版本与元数据不一致')
 // 校验已生成 APK 的签名，而不是仅依赖 Gradle 签名配置或密钥文件本身。
@@ -94,9 +98,15 @@ const releaseRoot = join(projectRoot, 'releases')
 const filename = `golden-abacus-${element.versionName}-vc${element.versionCode}-debug.apk`
 const releaseApk = join(releaseRoot, filename)
 const hashPath = `${releaseApk}.sha256`
-assert.ok(!existsSync(releaseApk) && !existsSync(hashPath), '发布产物已存在，请递增 Android 版本后再构建')
+// 清单同时记录源码提交与工作区状态，防止把未提交改动误标为某个正式提交。
+const manifestPath = `${releaseApk}.build.json`
+assert.ok(!existsSync(releaseApk) && !existsSync(hashPath) && !existsSync(manifestPath), '发布产物已存在，请递增 Android 版本后再构建')
 const sha256 = createHash('sha256').update(readFileSync(apk)).digest('hex')
+const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: projectRoot, encoding: 'utf8' }).trim()
+const sourceDirty = execFileSync('git', ['status', '--porcelain', '--untracked-files=normal'], { cwd: projectRoot, encoding: 'utf8' }).trim().length > 0
+const manifest = { ...currentVersion, applicationId: expectedAppId, sourceCommit, sourceDirty, signerSha256: expectedSigner, filename, sha256 }
 mkdirSync(releaseRoot, { recursive: true })
 copyFileSync(apk, releaseApk, constants.COPYFILE_EXCL)
 writeFileSync(hashPath, `${sha256}  ${filename}\n`, { flag: 'wx' })
+writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' })
 console.log(`APK: ${releaseApk}\nPackage: ${expectedAppId}\nVersion: ${element.versionName} (${element.versionCode})\nSigner SHA-256: ${expectedSigner}\nFile SHA-256: ${sha256}`)

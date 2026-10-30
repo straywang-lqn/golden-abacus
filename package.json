@@ -1,12 +1,12 @@
 {
   "name": "golden-abacus",
   "private": true,
-  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
-    "test": "node --experimental-strip-types --test src/domain.test.ts src/backup.test.ts",
+    "test": "node --experimental-strip-types --test src/domain.test.ts src/backup.test.ts scripts/version.test.mjs",
+    "check:version": "node scripts/version.mjs",
     "android:add": "cap add android",
     "android:sync": "pnpm build && cap sync android",
     "android:apk": "node scripts/build-android.mjs",

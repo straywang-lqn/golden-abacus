@@ -53,13 +53,19 @@ pnpm build
 
 生成的 Web 文件位于 `dist/`。
 
+## 分支与版本管理
+
+`main` 保持可发布，每次修改通过短期 `codex/<topic>` 分支提交 PR。自动 `verify` 检查运行版本校验、测试、类型检查与 Web 构建；主分支保护要求检查通过后合并，禁止强推与删除。
+
+产品版本以 Android `versionName` 为准，`versionCode` 用于安装升级；数据库和备份格式独立编号。开发、合并、标签和发布附件的完整步骤见 [CONTRIBUTING.md](CONTRIBUTING.md)，变更记录见 [CHANGELOG.md](CHANGELOG.md)。
+
 ## 构建 Android APK
 
 ```bash
 pnpm android:apk
 ```
 
-该跨平台命令会先校验原密钥证书，再依次运行测试、Web 构建、Capacitor 同步、Gradle 构建、APK 包名与版本检查和签名校验，最后把带版本号的 APK 和 `.sha256` 校验文件保存到 `releases/`。已存在的同版本产物不会被覆盖。
+打包前先运行 `git fetch origin --tags`，确保正式标签完整。该跨平台命令会先校验版本递增和原密钥证书，再依次运行测试、Web 构建、Capacitor 同步、Gradle 构建、APK 包名与版本检查和签名校验，最后把带版本号的 APK、`.sha256` 校验文件和 `.build.json` 构建清单保存到 `releases/`。已存在的同版本产物不会被覆盖；工作区有改动的构建会明确标记，不能作为正式发布包。
 
 构建使用 JDK 21：优先读取 `JAVA_HOME`，macOS 也可自动找到已注册的 JDK 21；Android SDK 路径读取 `android/local.properties` 中的 `sdk.dir`。把原安装使用的 `debug.keystore` 放在项目根目录，旧 Windows 环境也可沿用用户目录下的 `.android/debug.keystore`。密钥缺失或证书不匹配时构建会停止，不会创建替代密钥。
 
