@@ -4,6 +4,9 @@ import { formatLastExportTime, type AppSettings, type Category, type Theme, type
 import { useSheetFocus } from '../useSheetFocus'
 import CategoryIconPickerSheet from './CategoryIconPickerSheet.vue'
 
+// 产品版本由构建配置从 Android 注入，查看时无需联网或读取账目设置。
+const appVersion: string = import.meta.env.VITE_APP_VERSION
+
 /** 设置抽屉接收当前快照，只有用户保存或执行数据操作时才通知父组件。 */
 const props = defineProps<{
   categories: Category[]
@@ -147,6 +150,12 @@ function selectBackup(event: Event) {
         </section>
 
         <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+
+        <!-- 版本说明紧邻数据管理，统一放在“隐私与数据”上方。 -->
+        <section class="settings-section">
+          <h2>关于金算盘</h2>
+          <p class="field-help">应用版本：{{ appVersion }}</p>
+        </section>
 
         <!-- 导入、导出和清空都交给父组件处理忙碌状态与错误。 -->
         <section class="settings-section privacy-section">
