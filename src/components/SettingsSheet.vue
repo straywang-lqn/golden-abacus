@@ -18,6 +18,8 @@ const emit = defineEmits<{
   clear: []
   exportData: []
   importData: [file: File]
+  openBillImport: []
+  exportCsv: []
 }>()
 
 // 深度仅一层的普通对象副本足以隔离表单编辑，避免直接修改 props。
@@ -160,6 +162,12 @@ function selectBackup(event: Event) {
           </div>
           <p>导入前会校验文件，并在确认后替换当前全部数据。</p>
           <p>导出时间仅记录下载或分享操作，请确认文件已保存到应用之外。</p>
+          <h2>账单与表格</h2>
+          <div class="bill-actions">
+            <button class="secondary-button" :disabled="saving" @click="emit('openBillImport')">导入微信／支付宝账单</button>
+            <button class="secondary-button" :disabled="saving" @click="emit('exportCsv')">导出全部账目 CSV</button>
+          </div>
+          <p>账单先预览、确认后追加，重复交易单号会跳过。CSV 可用 Excel／WPS 查看；恢复账本请使用上方的 JSON 备份。</p>
           <button v-if="!confirmClear" class="danger-text" @click="confirmClear = true">清空全部数据</button>
           <div v-else class="clear-confirm" role="alert">
             <b>此操作不可恢复</b>

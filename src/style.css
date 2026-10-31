@@ -407,6 +407,18 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .privacy-section { border-bottom: 0; }
 .privacy-section p { color: var(--muted); line-height: 1.55; }
 .privacy-section p b { color: var(--text); }
+/* 账单预览沿用设置抽屉和语义配色，长商户名不撑开窄屏。 */
+.bill-actions { display: grid; gap: 8px; }
+.bill-import-content > p, .bill-import-content section p { color: var(--muted); line-height: 1.55; }
+.bill-import-content .form-error { color: var(--expense); }
+.bill-filename { overflow-wrap: anywhere; }
+.bill-category-row { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 12px; margin: 12px 0; }
+.bill-category-row select { min-width: 0; width: 100%; min-height: 48px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); font: inherit; }
+.bill-preview-list { display: grid; gap: 8px; margin: 12px 0; padding: 0; list-style: none; }
+.bill-preview-list li { display: grid; gap: 8px; padding: 16px; border-radius: 16px; background: var(--surface); overflow-wrap: anywhere; }
+.bill-preview-list span { color: var(--muted); font-size: 14px; }
+.bill-preview-list .bill-skip-reason { color: var(--expense); }
+.bill-pagination { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .clear-confirm { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px; border-radius: 12px; background: var(--danger-soft); color: var(--expense); }
 .clear-confirm > div { display: flex; gap: 8px; }
 

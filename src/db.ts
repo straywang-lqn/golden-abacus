@@ -5,7 +5,7 @@ import {
   type Category,
   type Transaction,
 } from './domain'
-import { BACKUP_FORMAT_VERSION, type BackupData } from './backup'
+import { BACKUP_FORMAT_VERSION, parseBackup, type BackupData } from './backup'
 
 // 这两个值共同定义现有用户数据的身份。仅在追加真实迁移时递增 DB_VERSION。
 const DB_NAME = 'golden-abacus'
@@ -146,6 +146,35 @@ export async function saveTransaction(item: Transaction): Promise<void> {
   const transaction = db.transaction('transactions', 'readwrite')
   transaction.objectStore('transactions').put(item)
   await complete(transaction)
+}
+
+/** 原子追加账单，复用备份校验并在同一读写事务内去重，绝不覆盖原有账目。 */
+export async function appendBillTransactions(items: Transaction[]): Promise<number> {
+  const db = await openDatabase()
+  const transaction = db.transaction(['transactions', 'categories'], 'readwrite')
+  const finished = complete(transaction)
+  const store = transaction.objectStore('transactions')
+  const categories = transaction.objectStore('categories').getAll()
+  let added = 0
+  let validationError: unknown
+  categories.onsuccess = () => {
+    try {
+      // 只验证本批普通对象；分类在事务内读取，防止确认期间恢复备份造成悬空引用。
+      const verified = parseBackup(JSON.stringify({ formatVersion: BACKUP_FORMAT_VERSION, exportedAt: new Date().toISOString(), transactions: items, categories: categories.result, settings: DEFAULT_SETTINGS }))
+      for (const item of verified.transactions) {
+        const request = store.getKey(item.id)
+        request.onsuccess = () => {
+          if (request.result === undefined) { store.add(item); added++ }
+        }
+      }
+    } catch (error) {
+      validationError = error
+      transaction.abort()
+    }
+  }
+  try { await finished }
+  catch (error) { throw validationError ?? error }
+  return added
 }
 
 /** 按稳定主键删除一笔账目。 */
