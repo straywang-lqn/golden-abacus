@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { formatDateInput, type AppSettings, type Category, type Theme, type TransactionType } from '../domain'
 import { useSheetFocus } from '../useSheetFocus'
+import CategoryIconPickerSheet from './CategoryIconPickerSheet.vue'
 
 /** 设置抽屉接收当前快照，只有用户保存或执行数据操作时才通知父组件。 */
 const props = defineProps<{
@@ -29,6 +30,8 @@ const backupReminderEnabled = ref(props.settings.backupReminderEnabled)
 const newType = ref<TransactionType>('expense')
 const newName = ref('')
 const newIcon = ref('✨')
+// 图标选择器按需挂载，关闭后释放内部草稿并恢复入口焦点。
+const iconPickerOpen = ref(false)
 const error = ref('')
 const confirmClear = ref(false)
 const backupInput = ref<HTMLInputElement>()
@@ -135,7 +138,7 @@ function selectBackup(event: Event) {
             <button :class="{ active: newType === 'income' }" @click="newType = 'income'">收入</button>
           </div>
           <div class="new-category-row">
-            <input v-model="newIcon" class="icon-input" maxlength="2" aria-label="新分类图标">
+            <button type="button" class="icon-input" :aria-label="`选择新分类图标，当前${newIcon}`" aria-haspopup="dialog" :aria-expanded="iconPickerOpen" @click="iconPickerOpen = true">{{ newIcon }}</button>
             <input v-model="newName" maxlength="12" placeholder="分类名称" aria-label="新分类名称">
             <button class="secondary-button" @click="addCategory">添加</button>
           </div>
@@ -168,5 +171,7 @@ function selectBackup(event: Event) {
         </section>
       </div>
     </section>
+    <!-- 短弹层独立管理草稿和焦点，取消不会改动新增分类表单。 -->
+    <CategoryIconPickerSheet v-if="iconPickerOpen" :value="newIcon" @close="iconPickerOpen = false" @confirm="newIcon = $event; iconPickerOpen = false" />
   </div>
 </template>
