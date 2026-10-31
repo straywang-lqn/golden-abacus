@@ -2,7 +2,7 @@
 
 产品版本以 `android/app/build.gradle` 的 `versionName` 为准；安装升级使用 `versionCode`，数据库和备份格式独立编号。
 
-## 1.6.0 — 待发布（versionCode 10）
+## 1.6.1 — 2026-11-01（versionCode 11）
 
 - 新增微信 XLSX／CSV、支付宝 CSV 账单本地导入：确认前预览明细、收支合计及跳过原因，可选择归类，按平台与交易单号去重，原子追加且不覆盖已有账目。
 - 新增全部账目 CSV 导出，兼容中文 Excel／WPS 查看，转义公式内容；保留完整 JSON 备份和独立的备份提醒时间。
