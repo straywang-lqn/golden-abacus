@@ -114,24 +114,26 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .top-bar .icon-button:disabled { opacity: .35; cursor: default; }
 
 /* 短弹层遵循应用的语义颜色，Vant 的浅色默认值不会覆盖深色主题。 */
-.van-popup.date-picker-panel {
+.van-popup.date-picker-panel, .van-popup.category-icon-panel {
   --van-popup-background: var(--surface);
   --van-popup-round-radius: var(--radius-popup);
-  --van-picker-background: var(--surface);
-  --van-picker-option-text-color: var(--muted);
-  --van-picker-option-font-size: 18px;
-  --van-picker-mask-color: linear-gradient(180deg, var(--surface), color-mix(in srgb, var(--surface) 32%, transparent)), linear-gradient(0deg, var(--surface), color-mix(in srgb, var(--surface) 32%, transparent));
   left: max(0px, calc((100vw - 520px) / 2));
   width: min(100%, 520px);
   max-height: calc(100dvh - var(--page-top-inset));
   padding: 12px 16px max(20px, env(safe-area-inset-bottom));
   color: var(--text);
 }
-.date-picker-overlay { background: rgb(0 0 0 / 32%); }
-.date-picker-header { display: grid; grid-template-columns: 64px minmax(0, 1fr) 64px; gap: 8px; align-items: center; }
-.date-picker-header h2 { margin: 0; font-size: 17px; font-weight: 650; text-align: center; }
+.van-popup.date-picker-panel {
+  --van-picker-background: var(--surface);
+  --van-picker-option-text-color: var(--muted);
+  --van-picker-option-font-size: 18px;
+  --van-picker-mask-color: linear-gradient(180deg, var(--surface), color-mix(in srgb, var(--surface) 32%, transparent)), linear-gradient(0deg, var(--surface), color-mix(in srgb, var(--surface) 32%, transparent));
+}
+.date-picker-overlay, .category-icon-overlay { background: rgb(0 0 0 / 32%); }
+.date-picker-header, .category-icon-header { display: grid; grid-template-columns: 64px minmax(0, 1fr) 64px; gap: 8px; align-items: center; }
+.date-picker-header h2, .category-icon-header h2 { margin: 0; font-size: 17px; font-weight: 650; text-align: center; }
 .date-picker-cancel { padding: 0 8px; color: var(--muted); }
-.date-picker-confirm { min-height: 48px; padding: 0 16px; border: 0; border-radius: 24px; background: var(--primary); color: var(--on-primary); font-weight: 650; cursor: pointer; }
+.date-picker-confirm, .category-icon-confirm { min-height: 48px; padding: 0 16px; border: 0; border-radius: 24px; background: var(--primary); color: var(--on-primary); font-weight: 650; cursor: pointer; }
 .date-picker-preview { margin: 20px 0 12px; color: var(--primary); font-size: 24px; font-weight: 650; text-align: center; font-variant-numeric: tabular-nums; }
 /* 选中行的底色在文字后方，渐隐遮罩仍由组件管理，以保留真实滚轮反馈。 */
 .date-picker-panel .van-picker__frame { z-index: 0; right: 0; left: 0; border-radius: 12px; background: var(--primary-soft); }
@@ -390,6 +392,18 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .switch-copy { color: var(--muted); font-size: 12px; }
 .switch { width: 44px; height: 24px; accent-color: var(--primary); cursor: pointer; }
 .new-category-row { display: grid; grid-template-columns: 50px 1fr auto; gap: 8px; margin-top: 12px; }
+.new-category-row button.icon-input { min-height: 48px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); cursor: pointer; }
+/* 自定义输入仍在弹层内，空白草稿无法确认；不会把图标网格留在设置页。 */
+.category-icon-custom { display: flex; align-items: center; gap: 12px; margin-top: 16px; color: var(--muted); }
+.category-icon-custom input { width: 64px; min-height: 48px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); text-align: center; font-size: 24px; }
+.category-icon-confirm:disabled { opacity: .45; cursor: default; }
+/* 图标选项保留原生单选键盘行为，窄屏按至少 48 px 的触摸区域自动换行。 */
+.category-icon-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(48px, 1fr)); gap: 8px; min-width: 0; margin: 16px 0 0; padding: 0; border: 0; }
+.category-icon-options legend { margin-bottom: 8px; color: var(--muted); font-size: 13px; }
+.category-icon-options label { position: relative; display: grid; place-items: center; min-height: 48px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); font-size: 24px; cursor: pointer; }
+.category-icon-options input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.category-icon-options label.selected { border-color: var(--primary); background: var(--primary-soft); box-shadow: inset 0 0 0 1px var(--primary); }
+.category-icon-options label:focus-within { outline: 3px solid color-mix(in srgb, var(--primary) 45%, transparent); outline-offset: 2px; }
 .privacy-section { border-bottom: 0; }
 .privacy-section p { color: var(--muted); line-height: 1.55; }
 .privacy-section p b { color: var(--text); }
