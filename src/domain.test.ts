@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_CATEGORIES, DEFAULT_SETTINGS, budgetForMonth, budgetProgress, categoryBreakdown, copyEntryDraft, dateInputToTimestamp, filterTransactions, formatDateInput, formatPercent, monthBounds, monthlyTrend, needsBackupReminder, parseDateInput, parseMonthInput, summarize, toCents, type MonthlyBudget, type Transaction, type TransactionFilter } from './domain.ts'
+import { DEFAULT_CATEGORIES, DEFAULT_SETTINGS, budgetForMonth, budgetProgress, categoryBreakdown, copyEntryDraft, dateInputToTimestamp, filterTransactions, formatDateInput, formatLastExportTime, formatPercent, monthBounds, monthlyTrend, needsBackupReminder, parseDateInput, parseMonthInput, summarize, toCents, type MonthlyBudget, type Transaction, type TransactionFilter } from './domain.ts'
 
 // 覆盖金额解析、整数分汇总，以及十二月跨年时的半开月份边界。
 test('金额和月度汇总使用整数分计算', () => {
@@ -121,6 +121,18 @@ test('日期选择校验真实日历日期并保留编辑记录的时分秒', ()
   const previous = new Date(2024, 1, 29, 19, 27, 43, 321).getTime()
   assert.equal(dateInputToTimestamp('2024-02-29', previous), previous)
   assert.equal(dateInputToTimestamp(formatDateInput(0), 0), 0)
+})
+
+// 旧设置缺字段或时间损坏时给出中文提示，合法的零值与 Date 上界仍能显示。
+test('导出时间区分缺失、异常和有效本地时间', () => {
+  assert.equal(formatLastExportTime(undefined), '暂无导出记录')
+  assert.equal(formatLastExportTime(null), '暂无导出记录')
+  for (const value of [NaN, Infinity, -Infinity, -1, 1.5, 8640000000000001, '', '123', true, {}]) {
+    assert.equal(formatLastExportTime(value), '时间记录异常，请重新导出备份')
+  }
+  assert.equal(formatLastExportTime(new Date(2026, 9, 31, 13, 5).getTime()), '2026-10-31 13:05')
+  assert.match(formatLastExportTime(0), /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/)
+  assert.doesNotMatch(formatLastExportTime(8640000000000000), /NaN|Invalid Date|异常/)
 })
 
 // 搜索必须跨月、包含起止整天、组合所有条件，并保留停用分类和原数组顺序。
