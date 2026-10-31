@@ -219,6 +219,16 @@ export function formatDateInput(timestamp: number): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
+/** 导出状态可能来自缺失字段的旧设置；缺失与损坏分别提示，不把异常日期展示给用户。 */
+export function formatLastExportTime(timestamp: unknown): string {
+  if (timestamp === null || timestamp === undefined) return '暂无导出记录'
+  // 与备份校验保持相同约束，只格式化 Date 可表示的非负整数毫秒值。
+  if (typeof timestamp !== 'number' || !Number.isSafeInteger(timestamp) || timestamp < 0 || timestamp > 8640000000000000) {
+    return '时间记录异常，请重新导出备份'
+  }
+  return `${formatDateInput(timestamp)} ${new Date(timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`
+}
+
 /**
  * 把日期输入转回时间戳。编辑时若日期未变则保留原时分秒；新选的今天用当前时刻，
  * 其他日期取中午以避开少数时区在午夜发生的夏令时切换。
