@@ -4,6 +4,8 @@ import { Directory, Encoding, Filesystem } from '@capacitor/filesystem'
 import { Share } from '@capacitor/share'
 import { computed, onMounted, ref } from 'vue'
 import { MAX_BACKUP_BYTES, parseBackup } from './backup'
+import { transactionsCsv } from './bills'
+import BillImportSheet from './components/BillImportSheet.vue'
 import EntrySheet from './components/EntrySheet.vue'
 import BudgetSheet from './components/BudgetSheet.vue'
 import LedgerView from './components/LedgerView.vue'
@@ -11,6 +13,7 @@ import SettingsSheet from './components/SettingsSheet.vue'
 import SearchSheet from './components/SearchSheet.vue'
 import StatsView from './components/StatsView.vue'
 import {
+  appendBillTransactions,
   clearAllData,
   createBackup,
   getCategories,
@@ -60,6 +63,11 @@ const currentBudget = computed(() => budgetForMonth(settings.value.budgets, mont
 // 业务抽屉和当前编辑对象；复制草稿没有原记录身份。
 const entryOpen = ref(false)
 const settingsOpen = ref(false)
+// 账单导入叠在设置上方，返回时保留尚未保存的设置草稿。
+const billImportOpen = ref(false)
+const billExistingIds = ref<string[]>([])
+const billLoading = ref(false)
+const billError = ref('')
 const editing = ref<Transaction | null>(null)
 const initialDraft = ref<EntryDraft | null>(null)
 const budgetOpen = ref(false)
@@ -288,37 +296,29 @@ async function clearData() {
   }
 }
 
-/** 原生端写入缓存后调用系统分享；浏览器端使用临时下载链接。 */
-async function exportBackup() {
-  saving.value = true
-  try {
-    // 缩进 JSON 便于用户在需要时人工检查备份内容。
-    const backup = await createBackup()
-    const exportedAt = Date.parse(backup.exportedAt)
-    backup.settings.lastExportedAt = exportedAt
-    const json = JSON.stringify(backup, null, 2)
-    const filename = `golden-abacus-backup-${formatDateInput(Date.now())}.json`
+/** 两种导出复用原生缓存分享与浏览器下载；取消时返回 false。 */
+async function shareTextFile(text: string, filename: string, mime: string, title: string): Promise<boolean> {
     if (Capacitor.isNativePlatform()) {
       // 原生平台先写缓存文件，系统分享面板需要可访问的文件 URI。
       const file = await Filesystem.writeFile({
         path: filename,
-        data: json,
+        data: text,
         directory: Directory.Cache,
         encoding: Encoding.UTF8,
       })
       const shared = await Share.share({
-        title: '金算盘数据备份',
+        title,
         files: [file.uri],
-        dialogTitle: '导出金算盘备份',
+        dialogTitle: title,
       })
       // 未选择分享目标不算完成导出，不能抑制后续备份提醒。
       if (!shared.activityType) {
-        notify('尚未确认导出，请将备份保存到应用之外')
-        return
+        notify('尚未确认导出，请将文件保存到应用之外')
+        return false
       }
     } else {
       // 浏览器没有文件系统分享 API 时，以临时 Blob 链接触发下载。
-      const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }))
+      const url = URL.createObjectURL(new Blob([text], { type: mime }))
       const link = document.createElement('a')
       link.href = url
       link.download = filename
@@ -326,6 +326,18 @@ async function exportBackup() {
       // 下载触发后立即释放 Blob，避免长时间使用时累积内存。
       setTimeout(() => URL.revokeObjectURL(url), 1000)
     }
+    return true
+}
+
+/** 完整 JSON 备份才更新备份时间，CSV 无法用于完整恢复。 */
+async function exportBackup() {
+  saving.value = true
+  try {
+    // 缩进 JSON 便于用户在需要时人工检查备份内容。
+    const backup = await createBackup()
+    const exportedAt = Date.parse(backup.exportedAt)
+    backup.settings.lastExportedAt = exportedAt
+    if (!await shareTextFile(JSON.stringify(backup, null, 2), `golden-abacus-backup-${formatDateInput(Date.now())}.json`, 'application/json', '导出金算盘备份')) return
     // 只在下载触发或分享完成后记录时间，不将文件生成等同于已安全保存。
     const nextSettings = { ...settings.value, lastExportedAt: exportedAt }
     await saveSettings(nextSettings)
@@ -338,6 +350,48 @@ async function exportBackup() {
       return
     }
     showFatalError(error)
+  } finally {
+    saving.value = false
+  }
+}
+
+/** 从一致快照导出全部账目，不改变最近备份时间或备份提醒。 */
+async function exportCsv() {
+  saving.value = true
+  try {
+    const snapshot = await createBackup()
+    const csv = transactionsCsv(snapshot.transactions, snapshot.categories)
+    if (await shareTextFile(csv, `golden-abacus-ledger-${formatDateInput(Date.now())}.csv`, 'text/csv;charset=utf-8', '导出金算盘账目表格')) notify('已发起 CSV 导出，请确认文件已保存')
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Share canceled') notify('已取消导出')
+    else showFatalError(error)
+  } finally {
+    saving.value = false
+  }
+}
+
+/** 按需加载全部已有主键；失败在导入抽屉显示并允许重试。 */
+async function openBillImporter() {
+  billImportOpen.value = true
+  billLoading.value = true
+  billError.value = ''
+  try { billExistingIds.value = (await getAllTransactions()).map((item) => item.id) }
+  catch (error) { billError.value = error instanceof Error ? error.message : '无法读取已有账目，请重试' }
+  finally { billLoading.value = false }
+}
+
+/** 确认后只追加普通对象；数据库事务成功才刷新列表并关闭预览。 */
+async function importBills(entries: Transaction[]) {
+  if (saving.value) return
+  saving.value = true
+  billError.value = ''
+  try {
+    const added = await appendBillTransactions(entries)
+    await refreshAll()
+    billImportOpen.value = false
+    notify(`已追加 ${added} 条账目${added < entries.length ? `，另有 ${entries.length - added} 条已存在` : ''}`)
+  } catch (error) {
+    billError.value = error instanceof Error ? error.message : '导入失败，请重试；已有交易不会重复追加'
   } finally {
     saving.value = false
   }
@@ -475,6 +529,19 @@ onMounted(async () => {
       @clear="clearData"
       @export-data="exportBackup"
       @import-data="importBackup"
+      @open-bill-import="openBillImporter"
+      @export-csv="exportCsv"
+    />
+    <BillImportSheet
+      v-if="billImportOpen"
+      :categories="categories"
+      :existing-ids="billExistingIds"
+      :loading="billLoading"
+      :saving="saving"
+      :error="billError"
+      @close="billImportOpen = false"
+      @retry="openBillImporter"
+      @confirm="importBills"
     />
   </div>
 </template>
