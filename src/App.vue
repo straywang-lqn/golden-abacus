@@ -3,7 +3,7 @@ import { Capacitor } from '@capacitor/core'
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem'
 import { Share } from '@capacitor/share'
 import { computed, onMounted, ref } from 'vue'
-import { MAX_BACKUP_BYTES, parseBackup } from './backup'
+import { MAX_BACKUP_BYTES, parseBackup, serializeBackup } from './backup'
 import { transactionsCsv } from './bills'
 import BillImportSheet from './components/BillImportSheet.vue'
 import EntrySheet from './components/EntrySheet.vue'
@@ -190,6 +190,8 @@ function openCopyEntry(item: Transaction) {
 
 /** 补齐主键和审计时间，先持久化普通对象，再刷新响应式列表。 */
 async function saveEntry(draft: EntryDraft) {
+  // 同一草稿只允许一个写入，键盘提交也不能绕过忙碌状态。
+  if (saving.value) return
   saving.value = true
   entryError.value = ''
   try {
@@ -204,10 +206,14 @@ async function saveEntry(draft: EntryDraft) {
     })
     // 复制历史记录默认记在今天，保存后主页面定位到新记录所在月。
     if (initialDraft.value) month.value = shiftMonth(new Date(draft.occurredAt), 0)
-    // 只在持久化成功后刷新，避免界面显示未落盘的账目。
-    await refreshTransactions()
-    await refreshSearch()
+    // 写入已提交便关闭表单；刷新失败只能重读，不能诱导用户再次新增。
     entryOpen.value = false
+    try {
+      await refreshTransactions()
+      await refreshSearch()
+    } catch {
+      fatalError.value = '记录已保存，但列表刷新失败；请重新打开应用查看，无需再次记账'
+    }
     const category = categories.value.find((item) => item.id === draft.categoryId)
     notify(`已记录 ${formatMoney(draft.amountCents)} ${category?.name ?? '记录'}`)
   } catch (error) {
@@ -333,11 +339,11 @@ async function shareTextFile(text: string, filename: string, mime: string, title
 async function exportBackup() {
   saving.value = true
   try {
-    // 缩进 JSON 便于用户在需要时人工检查备份内容。
+    // 导出前检查与恢复相同的容量上限，失败不触发分享或更新导出时间。
     const backup = await createBackup()
     const exportedAt = Date.parse(backup.exportedAt)
     backup.settings.lastExportedAt = exportedAt
-    if (!await shareTextFile(JSON.stringify(backup, null, 2), `golden-abacus-backup-${formatDateInput(Date.now())}.json`, 'application/json', '导出金算盘备份')) return
+    if (!await shareTextFile(serializeBackup(backup), `golden-abacus-backup-${formatDateInput(Date.now())}.json`, 'application/json', '导出金算盘备份')) return
     // 只在下载触发或分享完成后记录时间，不将文件生成等同于已安全保存。
     const nextSettings = { ...settings.value, lastExportedAt: exportedAt }
     await saveSettings(nextSettings)

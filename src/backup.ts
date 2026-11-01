@@ -16,6 +16,13 @@ export type BackupData = {
   settings: AppSettings
 }
 
+/** 导出与恢复共用容量约束，禁止把无法恢复的文件标记为成功备份。 */
+export function serializeBackup(backup: BackupData): string {
+  const text = JSON.stringify(backup, null, 2)
+  if (new Blob([text]).size > MAX_BACKUP_BYTES) throw new Error('备份超过 10 MB，无法导出可恢复的备份；请保留本机数据')
+  return text
+}
+
 /** 排除 null 与数组，收窄外部 JSON 对象。 */
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)

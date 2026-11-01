@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
-    "test": "node --experimental-strip-types --test src/domain.test.ts src/backup.test.ts src/bills.test.ts scripts/version.test.mjs",
+    "test": "node --experimental-strip-types --test src/app.test.ts src/domain.test.ts src/backup.test.ts src/bills.test.ts scripts/version.test.mjs",
     "check:version": "node scripts/version.mjs",
     "android:add": "cap add android",
     "android:sync": "pnpm build && cap sync android",
