@@ -71,11 +71,34 @@ test('v2 备份校验预算结构、月份、金额和分类引用', () => {
     assert.throws(() => parseBackup(JSON.stringify({ ...valid, settings: { ...valid.settings, lastExportedAt } })), /设置数据无效/)
   }
   assert.throws(() => parseBackup(JSON.stringify({ ...valid, transactions: [{ ...backup.transactions[0], categoryId: 'missing' }] })), /不存在的分类/)
-  assert.throws(() => parseBackup(JSON.stringify({ ...valid, categories: [{ ...backup.categories[0], type: 'income' }] })), /无效的支出分类/)
+  assert.throws(() => parseBackup(JSON.stringify({ ...valid, categories: [{ ...backup.categories[0], type: 'income' }] })), /无效的支出分类|收支类型与分类不一致/)
 })
 
 // UTF-8 字节数而非字符数决定恢复上限，导出必须提前拒绝同样的超限数据。
 test('导出备份可原样恢复，超限中文内容不能生成成功备份', () => {
   assert.deepEqual(parseBackup(serializeBackup(backup)), backup)
   assert.throws(() => serializeBackup({ ...backup, transactions: [{ ...backup.transactions[0], note: '餐'.repeat(Math.ceil(MAX_BACKUP_BYTES / 3)) }] }), /超过 10 MB/)
+})
+
+// 合法整数未必是合法日期，发生日期还须落在共享选择器支持的年份内。
+test('备份拒绝无效时间戳与不可编辑的日期，保留合法边界和纪元时间', () => {
+  for (const occurredAt of [Number.MAX_SAFE_INTEGER, -Number.MAX_SAFE_INTEGER, new Date(999, 11, 31).getTime(), new Date(10000, 0, 1).getTime()]) {
+    assert.throws(() => parseBackup(JSON.stringify({ ...backup, transactions: [{ ...backup.transactions[0], occurredAt }] })), /账目数据无效/)
+  }
+  for (const field of ['createdAt', 'updatedAt']) {
+    assert.throws(() => parseBackup(JSON.stringify({ ...backup, transactions: [{ ...backup.transactions[0], [field]: Number.MAX_SAFE_INTEGER }] })), /账目数据无效/)
+  }
+  for (const occurredAt of [0, new Date(1000, 0, 1).getTime(), new Date(9999, 11, 31, 23, 59, 59, 999).getTime()]) {
+    assert.equal(parseBackup(JSON.stringify({ ...backup, transactions: [{ ...backup.transactions[0], occurredAt }] })).transactions[0].occurredAt, occurredAt)
+  }
+})
+
+// 新旧格式都须保持收支分类一致；正确引用的停用分类仍可恢复。
+test('v1 和 v2 备份拒绝收支分类错配并保留合法停用分类', () => {
+  for (const formatVersion of [1, 2]) {
+    const value = { ...backup, formatVersion }
+    assert.throws(() => parseBackup(JSON.stringify({ ...value, categories: [{ ...backup.categories[0], type: 'income' }] })), /收支类型与分类不一致/)
+    assert.throws(() => parseBackup(JSON.stringify({ ...value, transactions: [{ ...backup.transactions[0], type: 'income' }] })), /收支类型与分类不一致/)
+    assert.equal(parseBackup(JSON.stringify({ ...value, categories: [{ ...backup.categories[0], active: false }] })).transactions.length, 1)
+  }
 })

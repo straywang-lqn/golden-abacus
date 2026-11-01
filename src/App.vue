@@ -2,7 +2,7 @@
 import { Capacitor } from '@capacitor/core'
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem'
 import { Share } from '@capacitor/share'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { MAX_BACKUP_BYTES, parseBackup, serializeBackup } from './backup'
 import { transactionsCsv } from './bills'
 import BillImportSheet from './components/BillImportSheet.vue'
@@ -57,7 +57,28 @@ const categories = ref<Category[]>([])
 const settings = ref<AppSettings>({ ...DEFAULT_SETTINGS })
 // 备份提醒依据所有月份是否有数据，不能仅检查当前月。
 const hasAnyTransactions = ref(false)
-const backupDue = computed(() => needsBackupReminder(settings.value, hasAnyTransactions.value))
+// 时间本身不触发 Vue 更新；定期与回到前台时更新同一个响应式时钟。
+const reminderNow = ref(Date.now())
+const backupDue = computed(() => needsBackupReminder(settings.value, hasAnyTransactions.value, reminderNow.value))
+let reminderTimer: ReturnType<typeof setInterval> | undefined
+
+/** 页面恢复时立即校时，持续打开时每分钟刷新七天提醒边界。 */
+function refreshReminderClock() {
+  reminderNow.value = Date.now()
+}
+
+// 原生 WebView 与浏览器都使用页面可见性和焦点事件，无需新增原生插件。
+onMounted(() => {
+  refreshReminderClock()
+  reminderTimer = setInterval(refreshReminderClock, 60_000)
+  window.addEventListener('focus', refreshReminderClock)
+  document.addEventListener('visibilitychange', refreshReminderClock)
+})
+onBeforeUnmount(() => {
+  clearInterval(reminderTimer)
+  window.removeEventListener('focus', refreshReminderClock)
+  document.removeEventListener('visibilitychange', refreshReminderClock)
+})
 const currentBudget = computed(() => budgetForMonth(settings.value.budgets, month.value))
 
 // 业务抽屉和当前编辑对象；复制草稿没有原记录身份。
