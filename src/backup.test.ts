@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { parseBackup, type BackupData } from './backup.ts'
+import { MAX_BACKUP_BYTES, parseBackup, serializeBackup, type BackupData } from './backup.ts'
 import { DEFAULT_SETTINGS } from './domain.ts'
 
 // 最小但完整的合法备份，后续用对象展开只破坏待验证的单项约束。
@@ -72,4 +72,10 @@ test('v2 备份校验预算结构、月份、金额和分类引用', () => {
   }
   assert.throws(() => parseBackup(JSON.stringify({ ...valid, transactions: [{ ...backup.transactions[0], categoryId: 'missing' }] })), /不存在的分类/)
   assert.throws(() => parseBackup(JSON.stringify({ ...valid, categories: [{ ...backup.categories[0], type: 'income' }] })), /无效的支出分类/)
+})
+
+// UTF-8 字节数而非字符数决定恢复上限，导出必须提前拒绝同样的超限数据。
+test('导出备份可原样恢复，超限中文内容不能生成成功备份', () => {
+  assert.deepEqual(parseBackup(serializeBackup(backup)), backup)
+  assert.throws(() => serializeBackup({ ...backup, transactions: [{ ...backup.transactions[0], note: '餐'.repeat(Math.ceil(MAX_BACKUP_BYTES / 3)) }] }), /超过 10 MB/)
 })
