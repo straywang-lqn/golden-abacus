@@ -1,4 +1,4 @@
-import { parseMonthInput, type AppSettings, type Category, type MonthlyBudget, type Transaction } from './domain.ts'
+import { formatDateInput, parseDateInput, parseMonthInput, type AppSettings, type Category, type MonthlyBudget, type Transaction } from './domain.ts'
 
 /** 导出文件的结构版本；与 IndexedDB 的 DB_VERSION 相互独立。 */
 export const BACKUP_FORMAT_VERSION = 2
@@ -28,6 +28,11 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+/** 审计时间也必须能被 Date 表示；安全整数仍可能超过日期范围。 */
+function isTimestamp(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && Number.isFinite(new Date(value).getTime())
+}
+
 /** 校验一笔账目的全部持久化字段，不信任 JSON 提供的静态类型。 */
 function isTransaction(value: unknown): value is Transaction {
   if (!isObject(value)) return false
@@ -36,9 +41,10 @@ function isTransaction(value: unknown): value is Transaction {
     && Number.isSafeInteger(value.amountCents) && Number(value.amountCents) > 0
     && typeof value.categoryId === 'string'
     && typeof value.note === 'string'
-    && Number.isSafeInteger(value.occurredAt)
-    && Number.isSafeInteger(value.createdAt)
-    && Number.isSafeInteger(value.updatedAt)
+    // 发生日期须能由共享日期选择器编辑，审计时间只要求有效毫秒值。
+    && isTimestamp(value.occurredAt) && !!parseDateInput(formatDateInput(value.occurredAt))
+    && isTimestamp(value.createdAt)
+    && isTimestamp(value.updatedAt)
 }
 
 /** 校验分类字段及非空、非负约束。 */
@@ -129,6 +135,11 @@ export function parseBackup(text: string): BackupData {
   const categoryIds = new Set(value.categories.map((category) => category.id))
   if (value.transactions.some((transaction) => !categoryIds.has(transaction.categoryId))) {
     throw new Error('备份中有账目引用了不存在的分类')
+  }
+  // 分类存在仍不足以保证合法；收支方向必须与账目一致。
+  const categoryTypes = new Map(value.categories.map((category) => [category.id, category.type]))
+  if (value.transactions.some((transaction) => categoryTypes.get(transaction.categoryId) !== transaction.type)) {
+    throw new Error('备份中有账目的收支类型与分类不一致')
   }
   // 旧备份在恢复事务之前补齐新字段，旧账目和主题保持原值。
   const settings: AppSettings = value.formatVersion === 1
