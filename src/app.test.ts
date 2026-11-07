@@ -110,3 +110,28 @@ test('无效日期和分类错配在导入确认前失败', async () => {
     assert.equal(context.saving.value, false)
   }
 })
+
+// 重复提交共用忙碌锁，关闭后返回的模型结果不能触发读取或显示草稿。
+test('助手拒绝重复请求并忽略关闭后的响应', async () => {
+  let calls = 0
+  let resolve!: (value: string) => void
+  const context = {
+    aiOpen: ref(true), aiBusy: ref(false), aiInput: ref('本月花了多少'), aiError: ref(''),
+    aiCommand: ref(null), aiAnswer: ref(null), aiRequest: undefined,
+    aiConfig: ref({}), categories: ref([]), month: ref(new Date()),
+    AbortController, aiMessages: () => [],
+    requestAi: () => { calls++; return new Promise<string>(done => { resolve = done }) },
+    parseAiCommand: () => assert.fail('关闭后不得解析结果'),
+  }
+  const send = appFunction('sendAi', context)
+  const close = appFunction('closeAi', context)
+  const pending = send()
+  await send()
+  assert.equal(calls, 1)
+  close()
+  resolve('{}')
+  await pending
+  assert.equal(context.aiCommand.value, null)
+  assert.equal(context.aiInput.value, '')
+  assert.equal(context.aiBusy.value, false)
+})

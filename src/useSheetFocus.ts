@@ -15,7 +15,7 @@ export function useSheetFocus(panel: Ref<HTMLElement | undefined>, close: () => 
       close()
     } else if (event.key === 'Tab') {
       // 排除禁用和隐藏控件，使首尾循环与当前可见表单一致。
-      const targets = [...panel.value.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex="0"]')]
+      const targets = [...panel.value.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]')]
         .filter((element) => element.getClientRects().length > 0)
       const first = targets[0]
       const last = targets.at(-1)

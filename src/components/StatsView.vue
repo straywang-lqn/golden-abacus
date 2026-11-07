@@ -26,6 +26,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   selectMonth: [month: Date]
   edit: [transaction: Transaction]
+  ai: []
   settings: []
 }>()
 
@@ -109,7 +110,7 @@ function selectTrendMonth(month: Date) {
 
 <template>
   <main ref="statsPage" class="page stats-page">
-    <MonthNavigation :month="month" @select-month="$emit('selectMonth', $event)" @settings="$emit('settings')" />
+    <MonthNavigation :month="month" @select-month="$emit('selectMonth', $event)" @settings="$emit('settings')" @ai="$emit('ai')" />
 
     <section class="stats-summary" :aria-label="`${monthLabel(month)}统计`">
       <span><small>收入</small><b class="income">{{ formatMoney(summary.income) }}</b></span>

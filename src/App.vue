@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import AiAssistantSheet from './components/AiAssistantSheet.vue'
+import AiSettingsSheet from './components/AiSettingsSheet.vue'
+import { aiMessages, answerAi, parseAiCommand, type AiCommand, type AiAnswer } from './ai'
+import { loadAiConfig, saveAiConfig, clearAiConfig, emptyAiConfig, requestAi, type AiConfig } from './aiClient'
+import type { TransactionFilter } from './domain'
 import { Capacitor } from '@capacitor/core'
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem'
 import { Share } from '@capacitor/share'
@@ -106,6 +111,89 @@ const fatalError = ref('')
 const toast = ref('')
 let toastTimer: ReturnType<typeof setTimeout> | undefined
 
+// 助手会话只存在内存，关闭后取消等待并清空结果。
+const aiOpen = ref(false)
+const aiSettingsOpen = ref(false)
+const aiConfig = ref(emptyAiConfig())
+const aiInput = ref('')
+const aiError = ref('')
+const aiConfigError = ref('')
+const aiCommand = ref<AiCommand | null>(null)
+const aiAnswer = ref<AiAnswer | null>(null)
+const aiBusy = ref(false)
+const searchFilter = ref<TransactionFilter>()
+let aiRequest: AbortController | undefined
+
+/** 从设备读取配置，配置错误只影响助手。 */
+async function openAi(configure = false) {
+  aiConfigError.value = ''
+  try { aiConfig.value = await loadAiConfig() }
+  catch { aiConfigError.value = '无法读取 AI 配置，请清除后重新填写' }
+  if (configure) aiSettingsOpen.value = true
+  else aiOpen.value = true
+}
+
+/** 保存或清除配置后同步会话状态。 */
+async function updateAiConfig(value?: AiConfig) {
+  if (saving.value) return
+  saving.value = true
+  aiConfigError.value = ''
+  try {
+    if (value) aiConfig.value = await saveAiConfig(value)
+    else {
+      await clearAiConfig()
+      aiConfig.value = emptyAiConfig()
+    }
+    aiSettingsOpen.value = false
+  } catch (error) {
+    aiConfigError.value = error instanceof Error ? error.message : 'AI 配置操作失败'
+  } finally { saving.value = false }
+}
+
+/** 每次发送只解析一次，数据库查询在本机执行。 */
+async function sendAi() {
+  if (aiBusy.value || !aiInput.value.trim() || !aiOpen.value) return
+  const controller = new AbortController()
+  aiRequest = controller
+  aiBusy.value = true
+  aiCommand.value = null
+  aiAnswer.value = null
+  aiError.value = ''
+  const now = Date.now()
+  try {
+    const response = await requestAi(aiConfig.value, aiMessages(aiInput.value.trim(), categories.value, month.value, now), controller.signal)
+    if (controller.signal.aborted) return
+    const command = parseAiCommand(response, categories.value, now)
+    const answer = command.kind === 'entry' || command.kind === 'clarify' ? null
+      : answerAi(command, await getAllTransactions(), categories.value, settings.value.budgets)
+    if (controller.signal.aborted) return
+    aiCommand.value = command
+    aiAnswer.value = answer
+  } catch (error) {
+    if (!controller.signal.aborted) aiError.value = error instanceof Error ? error.message : 'AI 请求失败'
+  } finally {
+    if (aiRequest === controller) aiBusy.value = false
+  }
+}
+
+/** 关闭时丢弃迟到响应和全部临时内容。 */
+function closeAi() {
+  aiRequest?.abort()
+  aiRequest = undefined
+  aiOpen.value = aiBusy.value = false
+  aiInput.value = aiError.value = ''
+  aiCommand.value = aiAnswer.value = null
+}
+
+/** 将已校验草稿交给原表单，用户确认前不写库。 */
+function reviewAiEntry() {
+  if (aiCommand.value?.kind !== 'entry') return
+  const draft = aiCommand.value.draft
+  closeAi()
+  openNewEntry()
+  initialDraft.value = draft
+}
+
 /** 把持久化主题映射到根元素，CSS 负责实际配色。 */
 function applyTheme() {
   document.documentElement.dataset.theme = settings.value.theme
@@ -145,7 +233,8 @@ async function refreshSearch() {
 }
 
 /** 打开搜索时立即呈现加载状态，避免将上次搜索快照当成最新数据。 */
-function openSearch() {
+function openSearch(filter?: TransactionFilter) {
+  searchFilter.value = filter
   searchOpen.value = true
   refreshSearch()
 }
@@ -310,6 +399,9 @@ async function dismissStorageNotice() {
 async function clearData() {
   saving.value = true
   try {
+    closeAi()
+    await clearAiConfig()
+    aiConfig.value = emptyAiConfig()
     await clearAllData()
     // 清空后从本月重新查询，确保列表、趋势、分类和设置全部回到数据库状态。
     month.value = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
@@ -433,6 +525,7 @@ async function importBackup(file: File) {
     const backup = parseBackup(await file.text())
     // 在任何数据库写入前获得确认；restoreBackup 本身会原子替换全部数据。
     if (!window.confirm(`将用备份中的 ${backup.transactions.length} 条账目替换当前全部数据，是否继续？`)) return
+    closeAi()
     await restoreBackup(backup)
     month.value = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
     await refreshAll()
@@ -479,7 +572,8 @@ onMounted(async () => {
       @edit="openEditEntry"
       @add="openNewEntry"
       @settings="settingsOpen = true"
-      @search="openSearch"
+      @ai="openAi()"
+      @search="openSearch()"
       @budget="budgetError = ''; budgetOpen = true"
       @export-data="exportBackup"
       @dismiss-notice="dismissStorageNotice"
@@ -493,6 +587,7 @@ onMounted(async () => {
       @select-month="selectMonth"
       @edit="openEditEntry"
       @settings="settingsOpen = true"
+      @ai="openAi()"
     />
 
     <!-- 底部导航在两个视图中常驻，中间按钮始终新建账目。 -->
@@ -513,8 +608,10 @@ onMounted(async () => {
     </Transition>
 
     <!-- 抽屉使用 v-if，每次打开都会从最新 props 创建一份表单状态。 -->
+    <AiAssistantSheet v-if="aiOpen" :inert="aiSettingsOpen" v-model:input="aiInput" :busy="aiBusy" :error="aiError || aiConfigError" :command="aiCommand" :answer="aiAnswer" :categories="categories" :ready="aiConfig.enabled && !!aiConfig.apiKey" @close="closeAi" @configure="openAi(true)" @send="sendAi" @entry="reviewAiEntry" @details="closeAi(); openSearch($event)" />
     <SearchSheet
       v-if="searchOpen"
+      :initial-filter="searchFilter"
       :transactions="searchTransactions"
       :categories="categories"
       :loading="searchLoading"
@@ -558,7 +655,9 @@ onMounted(async () => {
       @import-data="importBackup"
       @open-bill-import="openBillImporter"
       @export-csv="exportCsv"
+      @ai="openAi(true)"
     />
+    <AiSettingsSheet v-if="aiSettingsOpen" :config="aiConfig" :saving="saving" :error="aiConfigError" @close="aiSettingsOpen = false" @save="updateAiConfig" @clear="updateAiConfig()" />
     <BillImportSheet
       v-if="billImportOpen"
       :categories="categories"

@@ -9,6 +9,7 @@ const props = defineProps<{ month: Date }>()
 /** 所有入口都提交完整月份，避免箭头和直接选择维护两套状态。 */
 const emit = defineEmits<{
   selectMonth: [month: Date]
+  ai: []
   settings: []
 }>()
 
@@ -46,6 +47,7 @@ function selectMonth(value: string) {
         </svg>
       </button>
     </header>
+    <button class="text-button" aria-haspopup="dialog" @click="emit('ai')">AI 助手</button>
     <div v-if="!isCurrentMonth" class="month-shortcuts">
       <button class="text-button" @click="emit('selectMonth', shiftMonth(new Date(), 0))">回到本月</button>
     </div>

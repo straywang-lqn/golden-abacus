@@ -1,22 +1,22 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import DatePickerSheet from './DatePickerSheet.vue'
-import { filterTransactions, formatDateInput, formatMoney, formatSignedMoney, groupTransactionsByDay, summarize, toCents, type Category, type Transaction, type TransactionType } from '../domain'
+import { filterTransactions, formatDateInput, formatMoney, formatSignedMoney, groupTransactionsByDay, summarize, toCents, type Category, type Transaction, type TransactionType, type TransactionFilter } from '../domain'
 import { useSheetFocus } from '../useSheetFocus'
 
 /** 搜索接收按需载入的全部历史，条件变化只在本机筛选。 */
-const props = defineProps<{ transactions: Transaction[]; categories: Category[]; loading: boolean; loadError: string }>()
+const props = defineProps<{ transactions: Transaction[]; categories: Category[]; loading: boolean; loadError: string; initialFilter?: TransactionFilter }>()
 /** 编辑与失败重试仍由根组件读写数据库。 */
 const emit = defineEmits<{ close: []; edit: [item: Transaction]; retry: [] }>()
 
 // 空条件表示全部历史；日期草稿仅在共享选择器确认后提交。
-const query = ref('')
-const type = ref<TransactionType | 'all'>('all')
-const categoryId = ref('')
-const minAmount = ref('')
-const maxAmount = ref('')
-const startDate = ref('')
-const endDate = ref('')
+const query = ref(props.initialFilter?.query ?? '')
+const type = ref<TransactionType | 'all'>(props.initialFilter?.type ?? 'all')
+const categoryId = ref(props.initialFilter?.categoryId ?? '')
+const minAmount = ref(props.initialFilter?.minCents == null ? '' : (props.initialFilter.minCents / 100).toFixed(2))
+const maxAmount = ref(props.initialFilter?.maxCents == null ? '' : (props.initialFilter.maxCents / 100).toFixed(2))
+const startDate = ref(props.initialFilter?.startDate ?? '')
+const endDate = ref(props.initialFilter?.endDate ?? '')
 const dateTarget = ref<'start' | 'end'>('start')
 const datePickerOpen = ref(false)
 const panel = ref<HTMLElement>()
