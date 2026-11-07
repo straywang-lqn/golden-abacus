@@ -31,11 +31,11 @@ const emit = defineEmits<{
 }>()
 
 // 抽屉每次通过 v-if 重新创建，因此这些值只需从 props 初始化一次。
-const type = ref<TransactionType>(props.editing?.type ?? 'expense')
-const amount = ref(props.editing ? (props.editing.amountCents / 100).toFixed(2) : '')
-const categoryId = ref(props.editing?.categoryId ?? '')
-const note = ref(props.editing?.note ?? '')
-const date = ref(formatDateInput(props.editing?.occurredAt ?? Date.now()))
+const type = ref<TransactionType>((props.editing ?? props.initialDraft)?.type ?? 'expense')
+const amount = ref(props.editing || props.initialDraft ? ((props.editing ?? props.initialDraft)!.amountCents / 100).toFixed(2) : '')
+const categoryId = ref((props.editing ?? props.initialDraft)?.categoryId ?? '')
+const note = ref((props.editing ?? props.initialDraft)?.note ?? '')
+const date = ref(formatDateInput((props.editing ?? props.initialDraft)?.occurredAt ?? Date.now()))
 // 日期草稿只在共享弹层确认后更新，取消不会改变表单中的已有日期。
 const datePickerOpen = ref(false)
 

@@ -5,6 +5,8 @@ const config: CapacitorConfig = {
   appId: 'com.goldenabacus.app',
   appName: '金算盘',
   webDir: 'dist',
+  // Debug 安装包也不能记录包含 API Key 的桥接参数。
+  loggingBehavior: 'none',
 }
 
 export default config

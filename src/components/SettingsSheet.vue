@@ -16,6 +16,7 @@ const props = defineProps<{
 
 /** 所有会触及 IndexedDB 或文件系统的操作均由 App.vue 实现。 */
 const emit = defineEmits<{
+  ai: []
   close: []
   save: [categories: Category[], settings: AppSettings]
   clear: []
@@ -160,8 +161,9 @@ function selectBackup(event: Event) {
         <!-- 导入、导出和清空都交给父组件处理忙碌状态与错误。 -->
         <section class="settings-section privacy-section">
           <h2>隐私与数据</h2>
+          <button class="secondary-button" @click="emit('ai')">AI 助手配置</button>
           <p><b>所有数据仅保存在此设备。</b></p>
-          <p>应用不登录、不同步、不上传数据。卸载或清除应用数据前，请先导出备份。</p>
+          <p>账本仅保存在本机。主动使用 AI 时会发送输入文字、分类和日期上下文。卸载或清除应用数据前，请先导出备份。</p>
           <p>最近导出：{{ formatLastExportTime(settings.lastExportedAt) }}</p>
           <label class="backup-reminder-toggle"><span>每 7 天在应用内提醒备份</span><input v-model="backupReminderEnabled" type="checkbox" aria-label="开启应用内备份提醒"></label>
           <div class="theme-options">

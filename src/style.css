@@ -455,3 +455,20 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* 助手沿用抽屉和主题令牌，窄屏下所有输入保持可操作。 */
+.ai-config, .ai-content { display: grid; align-content: start; gap: 12px; }
+.ai-config { padding-top: 12px; }
+.ai-config label { display: grid; gap: 4px; }
+.ai-config input, .ai-config textarea {
+  min-width: 0; width: 100%; min-height: 48px; padding: 12px;
+  font: inherit; color: var(--text); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 12px;
+}
+.ai-config .ai-toggle { display: flex; align-items: center; justify-content: space-between; }
+.ai-toggle input { width: 48px; accent-color: var(--primary); }
+.ai-config textarea:focus-visible { outline: 2px solid var(--primary); }
+.ai-notice, .ai-result { padding: 16px; border-radius: 16px; overflow-wrap: anywhere; }
+.ai-notice { margin: 8px 0 0; background: var(--primary-soft); }
+.ai-result { background: var(--surface); }
+.ai-result h2 { margin: 0 0 8px; font-size: 16px; }
