@@ -118,19 +118,53 @@ const aiConfig = ref(emptyAiConfig())
 const aiInput = ref('')
 const aiError = ref('')
 const aiConfigError = ref('')
+// 首页只展示配置状态；读取失败和配置表单的保存错误互不影响。
+const aiConfigLoading = ref(false)
+const aiConfigReadError = ref('')
+const aiStatus = computed(() => {
+  if (aiConfigLoading.value) return '读取中…'
+  if (aiConfigReadError.value) return '配置读取失败'
+  if (!aiConfig.value.enabled) return '未启用'
+  return aiConfig.value.apiKey ? '已启用' : '需补填 Key'
+})
 const aiCommand = ref<AiCommand | null>(null)
 const aiAnswer = ref<AiAnswer | null>(null)
 const aiBusy = ref(false)
 const searchFilter = ref<TransactionFilter>()
 let aiRequest: AbortController | undefined
 
-/** 从设备读取配置，配置错误只影响助手。 */
-async function openAi(configure = false) {
+/** 从设备读取配置；失败时禁用旧配置，并保留进入配置页修复的入口。 */
+async function refreshAiConfig() {
+  aiConfigLoading.value = true
+  aiConfigReadError.value = ''
+  try {
+    aiConfig.value = await loadAiConfig()
+  } catch {
+    aiConfig.value = emptyAiConfig()
+    aiConfigReadError.value = '无法读取 AI 配置，请清除后重新填写'
+  } finally {
+    aiConfigLoading.value = false
+  }
+}
+
+/** 打开设置时加载 AI 摘要，其他设置入口可立即使用。 */
+function openSettings() {
+  if (saving.value || aiConfigLoading.value) return
+  settingsOpen.value = true
+  void refreshAiConfig()
+}
+
+/** 打开助手前读取配置，避免重复读取时叠加抽屉。 */
+async function openAi() {
+  if (saving.value || aiConfigLoading.value) return
+  await refreshAiConfig()
+  aiOpen.value = true
+}
+
+/** 助手与设置已读取配置，进入编辑页只需清理上一次提交错误。 */
+function openAiSettings() {
   aiConfigError.value = ''
-  try { aiConfig.value = await loadAiConfig() }
-  catch { aiConfigError.value = '无法读取 AI 配置，请清除后重新填写' }
-  if (configure) aiSettingsOpen.value = true
-  else aiOpen.value = true
+  aiSettingsOpen.value = true
 }
 
 /** 保存或清除配置后同步会话状态。 */
@@ -144,6 +178,8 @@ async function updateAiConfig(value?: AiConfig) {
       await clearAiConfig()
       aiConfig.value = emptyAiConfig()
     }
+    // 成功保存或清除后，已修复先前的读取错误。
+    aiConfigReadError.value = ''
     aiSettingsOpen.value = false
   } catch (error) {
     aiConfigError.value = error instanceof Error ? error.message : 'AI 配置操作失败'
@@ -239,7 +275,7 @@ function openSearch(filter?: TransactionFilter) {
   refreshSearch()
 }
 
-/** 重新载入全部持久化状态；用于启动、设置保存、清空和导入后同步界面。 */
+/** 重新载入全部持久化状态；用于启动、清空和导入后同步界面。 */
 async function refreshAll() {
   // 分类和设置彼此独立，先并发读取以缩短启动和保存后的等待时间。
   ;[categories.value, settings.value] = await Promise.all([getCategories(), getSettings()])
@@ -367,17 +403,27 @@ async function saveBudget(budget: MonthlyBudget) {
   }
 }
 
-/** 同时保存分类和设置，完成后从数据库重载权威状态。 */
-async function savePreferences(nextCategories: Category[], nextSettings: AppSettings) {
+/** 分类页只写分类存储，提交成功后更新账本和统计所用的分类。 */
+async function saveCategoryPreferences(nextCategories: Category[]) {
   saving.value = true
   try {
-    // 两个存储没有相互引用，可并发保存；任一失败都会保留设置抽屉。
-    await Promise.all([saveCategories(nextCategories), saveSettings(nextSettings)])
-    await refreshAll()
-    settingsOpen.value = false
+    await saveCategories(nextCategories)
+    categories.value = nextCategories
+    notify('分类已保存')
+  } finally {
+    saving.value = false
+  }
+}
+
+/** 在写入时合并当前设置，保留预算及数据页刚更新的导出时间。 */
+async function savePreferences(preferences: Partial<Pick<AppSettings, 'theme' | 'backupReminderEnabled'>>) {
+  saving.value = true
+  try {
+    const nextSettings = { ...settings.value, ...preferences }
+    await saveSettings(nextSettings)
+    settings.value = nextSettings
+    applyTheme()
     notify('设置已保存')
-  } catch (error) {
-    showFatalError(error)
   } finally {
     saving.value = false
   }
@@ -571,8 +617,8 @@ onMounted(async () => {
       @select-month="selectMonth"
       @edit="openEditEntry"
       @add="openNewEntry"
-      @settings="settingsOpen = true"
-      @ai="openAi()"
+      @settings="openSettings"
+      @ai="openAi"
       @search="openSearch()"
       @budget="budgetError = ''; budgetOpen = true"
       @export-data="exportBackup"
@@ -586,8 +632,8 @@ onMounted(async () => {
       :categories="categories"
       @select-month="selectMonth"
       @edit="openEditEntry"
-      @settings="settingsOpen = true"
-      @ai="openAi()"
+      @settings="openSettings"
+      @ai="openAi"
     />
 
     <!-- 底部导航在两个视图中常驻，中间按钮始终新建账目。 -->
@@ -608,7 +654,7 @@ onMounted(async () => {
     </Transition>
 
     <!-- 抽屉使用 v-if，每次打开都会从最新 props 创建一份表单状态。 -->
-    <AiAssistantSheet v-if="aiOpen" :inert="aiSettingsOpen" v-model:input="aiInput" :busy="aiBusy" :error="aiError || aiConfigError" :command="aiCommand" :answer="aiAnswer" :categories="categories" :ready="aiConfig.enabled && !!aiConfig.apiKey" @close="closeAi" @configure="openAi(true)" @send="sendAi" @entry="reviewAiEntry" @details="closeAi(); openSearch($event)" />
+    <AiAssistantSheet v-if="aiOpen" :inert="aiSettingsOpen" v-model:input="aiInput" :busy="aiBusy" :error="aiError || aiConfigReadError" :command="aiCommand" :answer="aiAnswer" :categories="categories" :ready="aiConfig.enabled && !!aiConfig.apiKey" @close="closeAi" @configure="openAiSettings" @send="sendAi" @entry="reviewAiEntry" @details="closeAi(); openSearch($event)" />
     <SearchSheet
       v-if="searchOpen"
       :initial-filter="searchFilter"
@@ -643,21 +689,26 @@ onMounted(async () => {
       @delete="deleteEntry"
       @copy="openCopyEntry"
     />
+    <!-- 上层抽屉打开时，设置页保留位置和草稿，避免 Tab 进入下层。 -->
     <SettingsSheet
       v-if="settingsOpen"
+      :inert="aiSettingsOpen || billImportOpen"
       :categories="categories"
       :settings="settings"
       :saving="saving"
+      :ai-status="aiStatus"
+      :ai-loading="aiConfigLoading"
+      :save-categories="saveCategoryPreferences"
+      :save-preferences="savePreferences"
       @close="settingsOpen = false"
-      @save="savePreferences"
       @clear="clearData"
       @export-data="exportBackup"
       @import-data="importBackup"
       @open-bill-import="openBillImporter"
       @export-csv="exportCsv"
-      @ai="openAi(true)"
+      @ai="openAiSettings"
     />
-    <AiSettingsSheet v-if="aiSettingsOpen" :config="aiConfig" :saving="saving" :error="aiConfigError" @close="aiSettingsOpen = false" @save="updateAiConfig" @clear="updateAiConfig()" />
+    <AiSettingsSheet v-if="aiSettingsOpen" :config="aiConfig" :saving="saving" :error="aiConfigError || aiConfigReadError" @close="aiSettingsOpen = false" @save="updateAiConfig" @clear="updateAiConfig()" />
     <BillImportSheet
       v-if="billImportOpen"
       :categories="categories"
