@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { readBillFile } from '../billFile'
 import { parseBillRows, type BillPreview } from '../bills'
 import { formatDateInput, formatMoney, type Category, type Transaction, type TransactionType } from '../domain'
@@ -27,6 +27,11 @@ const visibleRows = computed(() => (onlySkipped.value ? skipped.value : preview.
 const pageCount = computed(() => Math.ceil((onlySkipped.value ? skipped.value.length : preview.value?.rows.length ?? 0) / 50))
 const missingCategory = computed(() => entries.value.some((entry) => !props.categories.some((category) => category.id === categoryIds.value[entry.type] && category.active && category.type === entry.type)))
 useSheetFocus(panel, () => { if (!busy.value) emit('close') })
+// 忙碌时按钮会禁用；操作结束后补回丢失的焦点，让 Escape 和 Tab 生效。
+const backButton = ref<HTMLButtonElement>()
+watch(busy, (isBusy) => {
+  if (!isBusy && !panel.value?.contains(document.activeElement)) backButton.value?.focus()
+}, { flush: 'post' })
 
 /** 只列出已保存且启用的分类，设置抽屉中未保存的草稿不参与导入。 */
 function categoriesFor(type: TransactionType) {
@@ -71,7 +76,7 @@ function confirm() {
   <div class="sheet-backdrop" @click.self="!busy && emit('close')">
     <section ref="panel" class="sheet bill-import-sheet" role="dialog" aria-modal="true" aria-label="导入微信或支付宝账单">
       <header class="sheet-header">
-        <button class="text-button" :disabled="busy" @click="emit('close')">返回</button>
+        <button ref="backButton" class="text-button" :disabled="busy" @click="emit('close')">返回</button>
         <h1>导入账单</h1>
         <span />
       </header>
