@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AiAssistantSheet from './components/AiAssistantSheet.vue'
+import AiLauncher from './components/AiLauncher.vue'
 import AiSettingsSheet from './components/AiSettingsSheet.vue'
 import { aiMessages, answerAi, parseAiCommand, type AiCommand, type AiAnswer } from './ai'
 import { loadAiConfig, saveAiConfig, clearAiConfig, emptyAiConfig, requestAi, type AiConfig } from './aiClient'
@@ -618,7 +619,6 @@ onMounted(async () => {
       @edit="openEditEntry"
       @add="openNewEntry"
       @settings="openSettings"
-      @ai="openAi"
       @search="openSearch()"
       @budget="budgetError = ''; budgetOpen = true"
       @export-data="exportBackup"
@@ -633,7 +633,6 @@ onMounted(async () => {
       @select-month="selectMonth"
       @edit="openEditEntry"
       @settings="openSettings"
-      @ai="openAi"
     />
 
     <!-- 底部导航在两个视图中常驻，中间按钮始终新建账目。 -->
@@ -648,6 +647,9 @@ onMounted(async () => {
         <span aria-hidden="true">◫</span><small>统计</small>
       </button>
     </nav>
+
+    <!-- 入口在两个视图间保持挂载，切换视图不会重置已拖动的位置。 -->
+    <AiLauncher @open="openAi" />
 
     <Transition name="toast">
       <div v-if="toast" class="toast" role="status">{{ toast }}</div>

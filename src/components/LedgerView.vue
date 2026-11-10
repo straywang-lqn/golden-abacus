@@ -29,7 +29,6 @@ defineEmits<{
   selectMonth: [month: Date]
   edit: [transaction: Transaction]
   add: []
-  ai: []
   settings: []
   dismissNotice: []
   search: []
@@ -50,7 +49,7 @@ const exceededCategories = computed(() => progress.value?.categories.filter((cat
 <template>
   <main class="page ledger-page">
     <!-- 月份切换和设置入口。 -->
-    <MonthNavigation :month="month" @select-month="$emit('selectMonth', $event)" @settings="$emit('settings')" @ai="$emit('ai')" />
+    <MonthNavigation :month="month" @select-month="$emit('selectMonth', $event)" @settings="$emit('settings')" />
 
     <!-- 金额已在领域层按整数分汇总，这里只负责格式化显示。 -->
     <section class="balance-card" aria-label="本月收支汇总">
