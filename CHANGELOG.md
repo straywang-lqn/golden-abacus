@@ -2,7 +2,7 @@
 
 产品版本以 `android/app/build.gradle` 的 `versionName` 为准；安装升级使用 `versionCode`，数据库和备份格式独立编号。
 
-## 待发布
+## 1.8.2 — 2026-11-12（versionCode 16）
 
 - 拖动 AI 小账房时保持身体直立，双手挥动、双脚交替蹬动；开启减少动态效果时显示静止动作。
 
