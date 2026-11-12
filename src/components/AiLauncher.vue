@@ -192,11 +192,14 @@ function moveWithKeyboard(event: KeyboardEvent) {
   background-size: 300% 300%;
 }
 
-/* 待机轻浮动，正面偶尔眨眼。手势期间固定角色，避免和位置操作叠加。 */
+/* 待机轻浮动，正面偶尔眨眼；拖动时保持直立并播放手脚动作。 */
 .mascot-figure { animation: mascot-bob 5.8s ease-in-out infinite; }
 .idle-front .mascot-image { animation: mascot-blink 5.2s steps(1, end) infinite; }
 .dragging .mascot-figure, .rotating .mascot-figure { animation: none; }
-.dragging .mascot-figure { transform: rotate(-8deg); }
+.dragging .mascot-image {
+  background-image: url('../assets/ai-mascot-drag.png');
+  animation: mascot-flail .9s steps(1, end) infinite;
+}
 
 @keyframes mascot-bob {
   0%, 12%, 32%, 100% { transform: translateY(0); }
@@ -208,9 +211,22 @@ function moveWithKeyboard(event: KeyboardEvent) {
   35% { background-position: 100% 100%; }
 }
 
+/* 九格动作按等时长循环，手脚变化不改变头部朝向或按钮位置。 */
+@keyframes mascot-flail {
+  0%, 100% { background-position: 0 0; }
+  11.111% { background-position: 50% 0; }
+  22.222% { background-position: 100% 0; }
+  33.333% { background-position: 0 50%; }
+  44.444% { background-position: 50% 50%; }
+  55.556% { background-position: 100% 50%; }
+  66.667% { background-position: 0 100%; }
+  77.778% { background-position: 50% 100%; }
+  88.889% { background-position: 100% 100%; }
+}
+
 /* 减少动态效果时取消自动动画，仍可手动选择朝向。 */
 @media (prefers-reduced-motion: reduce) {
-  .mascot-figure, .idle-front .mascot-image { animation: none; }
-  .dragging .mascot-figure { transform: none; }
+  .mascot-figure, .idle-front .mascot-image, .dragging .mascot-image { animation: none; }
+  .dragging .mascot-image { background-position: 0 0; }
 }
 </style>
